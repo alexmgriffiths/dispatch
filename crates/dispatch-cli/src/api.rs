@@ -46,6 +46,8 @@ pub struct PublishBuildRequest {
     pub rollout_percentage: i32,
     pub is_critical: bool,
     pub release_message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<String>,
 }
 
 impl ApiClient {

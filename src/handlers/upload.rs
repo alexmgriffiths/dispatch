@@ -183,6 +183,7 @@ pub async fn handle_presign_upload(
 // -- List updates --
 
 #[derive(Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateListItem {
     pub id: i64,
     pub runtime_version: String,
@@ -294,7 +295,7 @@ pub async fn handle_list_updates(
                 u.channel, u.rollout_percentage, u.is_critical, u.is_enabled, u.release_message,
                 u.expo_config, u.created_at,
                 COUNT(DISTINCT a.id) AS asset_count,
-                COALESCE(SUM(a.file_size), 0) AS total_size,
+                COALESCE(SUM(a.file_size), 0)::BIGINT AS total_size,
                 u.group_id, u.rollback_to_update_id, u.branch_name,
                 COALESCE(an.total_downloads, 0) AS total_downloads,
                 COALESCE(an.unique_devices, 0) AS unique_devices,

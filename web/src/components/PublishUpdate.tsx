@@ -127,7 +127,7 @@ export default function PublishUpdate({ preselectedBuildId, onPublished }: Props
   }
 
   const selectedBuilds = builds.filter((b) => selectedBuildIds.has(b.id))
-  const unpublishedBuilds = builds.filter((b) => !b.is_published)
+  const unpublishedBuilds = builds.filter((b) => !b.isPublished)
 
   return (
     <>
@@ -191,19 +191,19 @@ export default function PublishUpdate({ preselectedBuildId, onPublished }: Props
                       />
                       <div className="min-w-0 flex-1 space-y-1">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-semibold text-sm">v{b.runtime_version}</span>
+                          <span className="font-semibold text-sm truncate max-w-[120px]">{b.runtimeVersion}</span>
                           <Badge variant={b.platform as 'ios' | 'android'}>{b.platform}</Badge>
-                          {b.git_branch && (
+                          {b.gitBranch && (
                             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                               <GitBranch className="h-3 w-3" />
-                              {b.git_branch}
+                              {b.gitBranch}
                             </span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          {b.git_commit_hash && <span className="font-mono">{b.git_commit_hash.slice(0, 7)}</span>}
-                          <span>{timeAgo(b.created_at)}</span>
-                          <span>{b.asset_count} asset{b.asset_count !== 1 ? 's' : ''}</span>
+                          {b.gitCommitHash && <span className="font-mono">{b.gitCommitHash.slice(0, 7)}</span>}
+                          <span>{timeAgo(b.createdAt)}</span>
+                          <span>{b.assetCount} asset{b.assetCount !== 1 ? 's' : ''}</span>
                         </div>
                         {b.message && <p className="text-sm text-foreground/80">{b.message}</p>}
                       </div>

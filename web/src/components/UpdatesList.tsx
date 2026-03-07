@@ -65,10 +65,10 @@ export default function UpdatesList({ onPublish }: Props) {
     const ungrouped: UpdateRecord[] = []
 
     for (const u of updates) {
-      if (u.group_id) {
-        const existing = groupMap.get(u.group_id)
+      if (u.groupId) {
+        const existing = groupMap.get(u.groupId)
         if (existing) existing.push(u)
-        else groupMap.set(u.group_id, [u])
+        else groupMap.set(u.groupId, [u])
       } else {
         ungrouped.push(u)
       }
@@ -81,8 +81,8 @@ export default function UpdatesList({ onPublish }: Props) {
       result.push({
         groupId,
         updates: groupUpdates,
-        totalDownloads: groupUpdates.reduce((s, u) => s + u.total_downloads, 0),
-        uniqueDevices: groupUpdates.reduce((s, u) => s + u.unique_devices, 0),
+        totalDownloads: groupUpdates.reduce((s, u) => s + u.totalDownloads, 0),
+        uniqueDevices: groupUpdates.reduce((s, u) => s + u.uniqueDevices, 0),
       })
     }
 
@@ -91,15 +91,15 @@ export default function UpdatesList({ onPublish }: Props) {
       result.push({
         groupId: null,
         updates: [u],
-        totalDownloads: u.total_downloads,
-        uniqueDevices: u.unique_devices,
+        totalDownloads: u.totalDownloads,
+        uniqueDevices: u.uniqueDevices,
       })
     }
 
     // Sort by most recent update's created_at
     result.sort((a, b) => {
-      const aTime = Math.max(...a.updates.map(u => new Date(u.created_at).getTime()))
-      const bTime = Math.max(...b.updates.map(u => new Date(u.created_at).getTime()))
+      const aTime = Math.max(...a.updates.map(u => new Date(u.createdAt).getTime()))
+      const bTime = Math.max(...b.updates.map(u => new Date(u.createdAt).getTime()))
       return bTime - aTime
     })
 
@@ -120,7 +120,7 @@ export default function UpdatesList({ onPublish }: Props) {
       // Populate filter options from unfiltered results
       if (!hasFilters) {
         setKnownChannels([...new Set(data.map((u: UpdateRecord) => u.channel))])
-        setKnownBranches([...new Set(data.map((u: UpdateRecord) => u.branch_name).filter(Boolean) as string[])])
+        setKnownBranches([...new Set(data.map((u: UpdateRecord) => u.branchName).filter(Boolean) as string[])])
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load updates')
@@ -138,9 +138,9 @@ export default function UpdatesList({ onPublish }: Props) {
 
   async function toggleEnabled(u: UpdateRecord) {
     try {
-      await patchUpdate(u.id, { isEnabled: !u.is_enabled })
+      await patchUpdate(u.id, { isEnabled: !u.isEnabled })
       setUpdates((prev) =>
-        prev.map((x) => (x.id === u.id ? { ...x, is_enabled: !x.is_enabled } : x))
+        prev.map((x) => (x.id === u.id ? { ...x, isEnabled: !x.isEnabled } : x))
       )
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update')
@@ -149,9 +149,9 @@ export default function UpdatesList({ onPublish }: Props) {
 
   async function toggleCritical(u: UpdateRecord) {
     try {
-      await patchUpdate(u.id, { isCritical: !u.is_critical })
+      await patchUpdate(u.id, { isCritical: !u.isCritical })
       setUpdates((prev) =>
-        prev.map((x) => (x.id === u.id ? { ...x, is_critical: !x.is_critical } : x))
+        prev.map((x) => (x.id === u.id ? { ...x, isCritical: !x.isCritical } : x))
       )
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update')
@@ -162,7 +162,7 @@ export default function UpdatesList({ onPublish }: Props) {
     try {
       await patchUpdate(u.id, { rolloutPercentage: pct })
       setUpdates((prev) =>
-        prev.map((x) => (x.id === u.id ? { ...x, rollout_percentage: pct } : x))
+        prev.map((x) => (x.id === u.id ? { ...x, rolloutPercentage: pct } : x))
       )
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update')
@@ -184,11 +184,11 @@ export default function UpdatesList({ onPublish }: Props) {
   function renderGroup(group: UpdateGroup, idx: number) {
     const primary = group.updates[0]
     const isMultiPlatform = group.updates.length > 1
-    const allDisabled = group.updates.every(u => !u.is_enabled)
+    const allDisabled = group.updates.every(u => !u.isEnabled)
     const platforms = group.updates.map(u => u.platform)
     const mostRecentDate = group.updates.reduce((latest, u) =>
-      new Date(u.created_at) > new Date(latest) ? u.created_at : latest
-    , group.updates[0].created_at)
+      new Date(u.createdAt) > new Date(latest) ? u.createdAt : latest
+    , group.updates[0].createdAt)
 
     return (
       <div
@@ -206,32 +206,32 @@ export default function UpdatesList({ onPublish }: Props) {
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1 space-y-1.5">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="font-semibold text-sm">v{primary.runtime_version}</span>
+                <span className="font-semibold text-sm">v{primary.runtimeVersion}</span>
                 {platforms.map(p => (
                   <Badge key={p} variant={p as 'ios' | 'android'}>{p}</Badge>
                 ))}
                 <Badge variant={primary.channel as 'production' | 'staging' | 'canary'}>{primary.channel}</Badge>
-                {primary.is_rollback && <Badge variant="rollback">rollback</Badge>}
-                {group.updates.some(u => u.is_critical) && <Badge variant="critical">critical</Badge>}
+                {primary.isRollback && <Badge variant="rollback">rollback</Badge>}
+                {group.updates.some(u => u.isCritical) && <Badge variant="critical">critical</Badge>}
                 {allDisabled && <Badge variant="disabled">disabled</Badge>}
               </div>
-              {primary.release_message && (
-                <p className="text-sm text-foreground/80">{primary.release_message}</p>
+              {primary.releaseMessage && (
+                <p className="text-sm text-foreground/80">{primary.releaseMessage}</p>
               )}
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                 <span>{timeAgo(mostRecentDate)}</span>
                 <span>{group.totalDownloads.toLocaleString()} downloads</span>
                 <span>{group.uniqueDevices.toLocaleString()} devices</span>
-                {primary.git_commit_hash && (
+                {primary.gitCommitHash && (
                   <span className="inline-flex items-center gap-1">
                     <GitCommit className="h-3 w-3" />
-                    <span className="font-mono">{primary.git_commit_hash.slice(0, 7)}</span>
+                    <span className="font-mono">{primary.gitCommitHash.slice(0, 7)}</span>
                   </span>
                 )}
-                {primary.git_branch && (
+                {primary.gitBranch && (
                   <span className="inline-flex items-center gap-1">
                     <GitBranch className="h-3 w-3" />
-                    {primary.git_branch}
+                    {primary.gitBranch}
                   </span>
                 )}
               </div>
@@ -427,20 +427,20 @@ function PlatformRow({
     <div
       className={cn(
         'flex items-center justify-between gap-4 px-4 py-3 cursor-pointer hover:bg-accent/30 transition-colors',
-        !u.is_enabled && 'opacity-60'
+        !u.isEnabled && 'opacity-60'
       )}
       onClick={onClick}
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {!hidePlatform && <Badge variant={u.platform as 'ios' | 'android'} className="text-[10px]">{u.platform}</Badge>}
-          <span className="font-mono truncate text-[11px]">{u.update_uuid}</span>
-          <span>{timeAgo(u.created_at)}</span>
-          <span>{u.asset_count} asset{u.asset_count !== 1 ? 's' : ''}{u.total_size > 0 ? ` (${formatSize(u.total_size)})` : ''}</span>
-          <span>{u.total_downloads.toLocaleString()} dl</span>
-          <span>{u.unique_devices.toLocaleString()} devices</span>
-          {u.is_critical && <Badge variant="critical" className="text-[10px]">critical</Badge>}
-          {!u.is_enabled && <Badge variant="disabled" className="text-[10px]">disabled</Badge>}
+          <span className="font-mono truncate text-[11px]">{u.updateUuid}</span>
+          <span>{timeAgo(u.createdAt)}</span>
+          <span>{u.assetCount} asset{u.assetCount !== 1 ? 's' : ''}{u.totalSize > 0 ? ` (${formatSize(u.totalSize)})` : ''}</span>
+          <span>{u.totalDownloads.toLocaleString()} dl</span>
+          <span>{u.uniqueDevices.toLocaleString()} devices</span>
+          {u.isCritical && <Badge variant="critical" className="text-[10px]">critical</Badge>}
+          {!u.isEnabled && <Badge variant="disabled" className="text-[10px]">disabled</Badge>}
         </div>
       </div>
 
@@ -452,24 +452,24 @@ function PlatformRow({
         <div className="flex items-center gap-1.5" {...(isFirst ? { id: 'tour-active-toggle' } : {})}>
           <span className="text-[11px] text-muted-foreground">Active</span>
           <InfoTip>When disabled, devices will skip this update and receive the next active one instead.</InfoTip>
-          <Switch checked={u.is_enabled} onCheckedChange={() => onToggleEnabled(u)} />
+          <Switch checked={u.isEnabled} onCheckedChange={() => onToggleEnabled(u)} />
         </div>
         <div className="flex items-center gap-1.5" {...(isFirst ? { id: 'tour-critical-toggle' } : {})}>
           <span className="text-[11px] text-muted-foreground">Critical</span>
           <InfoTip>Forces an immediate app reload instead of waiting for the next cold start. Use for security or data-loss fixes.</InfoTip>
-          <Switch checked={u.is_critical} onCheckedChange={() => onToggleCritical(u)} />
+          <Switch checked={u.isCritical} onCheckedChange={() => onToggleCritical(u)} />
         </div>
         <div className="flex items-center gap-1.5" {...(isFirst ? { id: 'tour-rollout-slider' } : {})}>
           <span className="text-[11px] text-muted-foreground">Rollout</span>
           <InfoTip>Percentage of devices that will receive this update. Uses deterministic bucketing so each device always gets a consistent result.</InfoTip>
           <div className="flex items-center gap-1.5 w-24">
             <Slider
-              value={[u.rollout_percentage]}
+              value={[u.rolloutPercentage]}
               max={100}
               step={1}
               onValueChange={([val]) => onUpdateRollout(u, val)}
             />
-            <span className="text-[11px] font-medium w-7 text-right">{u.rollout_percentage}%</span>
+            <span className="text-[11px] font-medium w-7 text-right">{u.rolloutPercentage}%</span>
           </div>
         </div>
       </div>

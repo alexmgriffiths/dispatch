@@ -76,21 +76,7 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
     let runtime_version = get_runtime_version(&expo_config, &fingerprint);
     println!("  Runtime version: {}", style(&runtime_version).dim());
 
-    // Export bundles
     let dist_dir = cwd.join("dist");
-    println!();
-    println!("{} Exporting bundles...", style("*").cyan());
-    export_bundles(&cwd, opts.platform.as_deref())?;
-
-
-    // Parse metadata
-    let metadata_path = dist_dir.join("metadata.json");
-    if !metadata_path.exists() {
-        bail!("Export did not produce metadata.json. Check `npx expo export` output.");
-    }
-    let metadata: ExpoMetadata =
-        serde_json::from_str(&std::fs::read_to_string(&metadata_path)?)
-            .context("Failed to parse metadata.json")?;
 
     // Get git info
     let git_commit = git_output(&["rev-parse", "HEAD"]);
@@ -101,25 +87,11 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
         git_output(&["log", "-1", "--format=%s"]).unwrap_or_else(|| "Update".to_string())
     });
 
-    // Determine platforms to publish
-    let platforms = match opts.platform.as_deref() {
+    let platforms: Vec<&str> = match opts.platform.as_deref() {
         Some("ios") => vec!["ios"],
         Some("android") => vec!["android"],
-        _ => {
-            let mut p = Vec::new();
-            if metadata.file_metadata.ios.bundle.is_some() {
-                p.push("ios");
-            }
-            if metadata.file_metadata.android.bundle.is_some() {
-                p.push("android");
-            }
-            p
-        }
+        _ => vec!["ios", "android"],
     };
-
-    if platforms.is_empty() {
-        bail!("No bundles found in export output.");
-    }
 
     println!();
     println!(
@@ -129,7 +101,31 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
         style(platforms.join(", ")).bold()
     );
 
+    // Generate a shared group_id so both platforms are linked as one release
+    let group_id = uuid::Uuid::new_v4().to_string();
+
     for platform in &platforms {
+        // Export this platform
+        println!();
+        println!("{} Exporting {} bundle...", style("*").cyan(), platform);
+        let status = Command::new("npx")
+            .args(["expo", "export", "--output-dir", "dist", "--platform", platform])
+            .current_dir(&cwd)
+            .status()
+            .with_context(|| format!("Failed to run expo export for {platform}"))?;
+        if !status.success() {
+            bail!("expo export failed for {platform} with status {status}");
+        }
+
+        // Parse metadata immediately after this platform's export
+        let metadata_path = dist_dir.join("metadata.json");
+        if !metadata_path.exists() {
+            bail!("Export did not produce metadata.json.");
+        }
+        let metadata: ExpoMetadata =
+            serde_json::from_str(&std::fs::read_to_string(&metadata_path)?)
+                .context("Failed to parse metadata.json")?;
+
         let bundle_meta = match *platform {
             "ios" => &metadata.file_metadata.ios,
             "android" => &metadata.file_metadata.android,
@@ -167,7 +163,7 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
                 .unwrap()
                 .progress_chars("=> "),
         );
-        pb.set_prefix(format!("{platform}"));
+        pb.set_prefix(platform.to_string());
         pb.set_message(format!(
             "{} files, {}",
             assets.len(),
@@ -191,7 +187,7 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
 
         pb.set_position(70);
 
-        // Publish build
+        // Publish build with shared group_id
         let publish_resp = client
             .publish_build(
                 build.id,
@@ -201,6 +197,7 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
                     rollout_percentage: opts.rollout,
                     is_critical: opts.critical,
                     release_message: message.clone(),
+                    group_id: Some(group_id.clone()),
                 },
             )
             .await?;
@@ -265,26 +262,6 @@ fn get_runtime_version(expo_config: &serde_json::Value, fingerprint: &str) -> St
     }
     // Default to fingerprint
     fingerprint.to_string()
-}
-
-fn export_bundles(cwd: &Path, platform: Option<&str>) -> Result<()> {
-    let platforms = match platform {
-        Some(p) => vec![p],
-        None => vec!["ios", "android"],
-    };
-
-    for plat in &platforms {
-        let status = Command::new("npx")
-            .args(["expo", "export", "--output-dir", "dist", "--platform", plat])
-            .current_dir(cwd)
-            .status()
-            .with_context(|| format!("Failed to run expo export for {plat}"))?;
-
-        if !status.success() {
-            bail!("expo export failed for {plat} with status {status}");
-        }
-    }
-    Ok(())
 }
 
 fn git_output(args: &[&str]) -> Option<String> {

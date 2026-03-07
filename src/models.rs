@@ -89,6 +89,7 @@ pub struct BuildAsset {
 }
 
 #[derive(FromRow, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AuditLogEntry {
     pub id: i64,
     pub action: String,
@@ -101,6 +102,7 @@ pub struct AuditLogEntry {
 }
 
 #[derive(FromRow, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WebhookConfig {
     pub id: i64,
     pub project_id: Option<i64>,
@@ -130,6 +132,7 @@ pub struct WebhookDelivery {
 }
 
 #[derive(FromRow, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Branch {
     pub id: i64,
     pub project_id: Option<i64>,

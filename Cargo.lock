@@ -1070,7 +1070,7 @@ dependencies = [
 
 [[package]]
 name = "dispatch-cli"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "base64",
@@ -1084,6 +1084,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

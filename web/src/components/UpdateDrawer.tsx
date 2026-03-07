@@ -85,18 +85,18 @@ export default function UpdateDrawer({ update, onClose, onRefresh }: Props) {
   function detailSummary(entry: AuditLogRecord): string {
     const d = entry.details
     const parts: string[] = []
-    if (d.rollout_percentage !== undefined && d.rollout_percentage !== null) {
-      parts.push(`rollout \u2192 ${d.rollout_percentage}%`)
+    if (d.rolloutPercentage !== undefined && d.rolloutPercentage !== null) {
+      parts.push(`rollout \u2192 ${d.rolloutPercentage}%`)
     }
-    if (d.is_critical !== undefined && d.is_critical !== null) {
-      parts.push(`critical \u2192 ${d.is_critical ? 'yes' : 'no'}`)
+    if (d.isCritical !== undefined && d.isCritical !== null) {
+      parts.push(`critical \u2192 ${d.isCritical ? 'yes' : 'no'}`)
     }
-    if (d.is_enabled !== undefined && d.is_enabled !== null) {
-      parts.push(`enabled \u2192 ${d.is_enabled ? 'yes' : 'no'}`)
+    if (d.isEnabled !== undefined && d.isEnabled !== null) {
+      parts.push(`enabled \u2192 ${d.isEnabled ? 'yes' : 'no'}`)
     }
     if (d.channel) parts.push(`channel: ${d.channel}`)
-    if (d.source_update_id) parts.push(`from update #${d.source_update_id}`)
-    if (d.release_message) parts.push(`"${d.release_message}"`)
+    if (d.sourceUpdateId) parts.push(`from update #${d.sourceUpdateId}`)
+    if (d.releaseMessage) parts.push(`"${d.releaseMessage}"`)
     return parts.join(', ') || 'No details'
   }
 
@@ -137,7 +137,7 @@ export default function UpdateDrawer({ update, onClose, onRefresh }: Props) {
     setActionResult(null)
     try {
       await createRollback({
-        runtimeVersion: update.runtime_version,
+        runtimeVersion: update.runtimeVersion,
         platform: update.platform,
         channel: update.channel,
         rollbackToUpdateId: update.id,
@@ -159,7 +159,7 @@ export default function UpdateDrawer({ update, onClose, onRefresh }: Props) {
         <SheetHeader className="px-6 pt-6 pb-4">
           <SheetTitle>Update Details</SheetTitle>
           <SheetDescription className="font-mono text-xs truncate">
-            {update.update_uuid}
+            {update.updateUuid}
           </SheetDescription>
         </SheetHeader>
 
@@ -179,9 +179,9 @@ export default function UpdateDrawer({ update, onClose, onRefresh }: Props) {
             <section>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Overview</h4>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Runtime Version" value={`v${update.runtime_version}`} />
-                {update.runtime_fingerprint && (
-                  <Field label="Fingerprint" value={update.runtime_fingerprint} mono />
+                <Field label="Runtime Version" value={`v${update.runtimeVersion}`} />
+                {update.runtimeFingerprint && (
+                  <Field label="Fingerprint" value={update.runtimeFingerprint} mono />
                 )}
                 <Field label="Platform">
                   <Badge variant={update.platform as 'ios' | 'android'}>{update.platform}</Badge>
@@ -189,65 +189,65 @@ export default function UpdateDrawer({ update, onClose, onRefresh }: Props) {
                 <Field label="Channel">
                   <Badge variant={update.channel as 'production' | 'staging' | 'canary'}>{update.channel}</Badge>
                 </Field>
-                {update.branch_name && (
+                {update.branchName && (
                   <Field label="Branch">
                     <span className="inline-flex items-center gap-1 text-sm">
                       <GitBranch className="h-3 w-3 text-muted-foreground" />
-                      {update.branch_name}
+                      {update.branchName}
                     </span>
                   </Field>
                 )}
                 <Field label="Status">
                   <div className="flex gap-1">
-                    {update.is_enabled ? <Badge variant="active">Active</Badge> : <Badge variant="disabled">Disabled</Badge>}
-                    {update.is_critical && <Badge variant="critical">Critical</Badge>}
-                    {update.is_rollback && <Badge variant="rollback">Rollback</Badge>}
+                    {update.isEnabled ? <Badge variant="active">Active</Badge> : <Badge variant="disabled">Disabled</Badge>}
+                    {update.isCritical && <Badge variant="critical">Critical</Badge>}
+                    {update.isRollback && <Badge variant="rollback">Rollback</Badge>}
                   </div>
                 </Field>
-                <Field label="Rollout" value={`${update.rollout_percentage}%`} />
-                <Field label="Assets" value={`${update.asset_count}${update.total_size > 0 ? ` (${formatSize(update.total_size)})` : ''}`} />
-                <Field label="Created" value={formatDate(update.created_at)} />
-                {update.group_id && <Field label="Group" value={update.group_id} mono />}
-                {update.rollback_to_update_id && <Field label="Rolls back to" value={`Update #${update.rollback_to_update_id}`} />}
+                <Field label="Rollout" value={`${update.rolloutPercentage}%`} />
+                <Field label="Assets" value={`${update.assetCount}${update.totalSize > 0 ? ` (${formatSize(update.totalSize)})` : ''}`} />
+                <Field label="Created" value={formatDate(update.createdAt)} />
+                {update.groupId && <Field label="Group" value={update.groupId} mono />}
+                {update.rollbackToUpdateId && <Field label="Rolls back to" value={`Update #${update.rollbackToUpdateId}`} />}
               </div>
-              {update.release_message && (
+              {update.releaseMessage && (
                 <div className="mt-3">
                   <span className="text-xs text-muted-foreground">Release Notes</span>
-                  <p className="text-sm mt-0.5">{update.release_message}</p>
+                  <p className="text-sm mt-0.5">{update.releaseMessage}</p>
                 </div>
               )}
             </section>
 
             {/* Git / Build Info */}
-            {(update.git_commit_hash || update.git_branch || update.build_message) && (
+            {(update.gitCommitHash || update.gitBranch || update.buildMessage) && (
               <>
                 <Separator />
                 <section>
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Build Info</h4>
                   <div className="space-y-2">
-                    {update.git_commit_hash && (
+                    {update.gitCommitHash && (
                       <div className="flex items-center gap-2 text-sm">
                         <GitCommit className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <span className="font-mono text-xs">{update.git_commit_hash.slice(0, 7)}</span>
+                        <span className="font-mono text-xs">{update.gitCommitHash.slice(0, 7)}</span>
                         <button
                           className="text-muted-foreground hover:text-foreground transition-colors"
-                          onClick={() => navigator.clipboard.writeText(update.git_commit_hash!)}
+                          onClick={() => navigator.clipboard.writeText(update.gitCommitHash!)}
                         >
                           <Copy className="h-3 w-3" />
                         </button>
                       </div>
                     )}
-                    {update.git_branch && (
+                    {update.gitBranch && (
                       <div className="flex items-center gap-2 text-sm">
                         <GitBranch className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <span>{update.git_branch}</span>
+                        <span>{update.gitBranch}</span>
                       </div>
                     )}
-                    {update.ci_run_url && (
+                    {update.ciRunUrl && (
                       <div className="flex items-center gap-2 text-sm">
                         <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         <a
-                          href={update.ci_run_url}
+                          href={update.ciRunUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-primary hover:underline truncate"
@@ -256,8 +256,8 @@ export default function UpdateDrawer({ update, onClose, onRefresh }: Props) {
                         </a>
                       </div>
                     )}
-                    {update.build_message && (
-                      <p className="text-sm text-foreground/80">{update.build_message}</p>
+                    {update.buildMessage && (
+                      <p className="text-sm text-foreground/80">{update.buildMessage}</p>
                     )}
                   </div>
                 </section>
@@ -271,11 +271,11 @@ export default function UpdateDrawer({ update, onClose, onRefresh }: Props) {
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Analytics</h4>
               <div className="flex gap-8">
                 <div>
-                  <div className="text-2xl font-bold">{update.total_downloads.toLocaleString()}</div>
+                  <div className="text-2xl font-bold">{update.totalDownloads.toLocaleString()}</div>
                   <div className="text-xs text-muted-foreground">Downloads</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold">{update.unique_devices.toLocaleString()}</div>
+                  <div className="text-2xl font-bold">{update.uniqueDevices.toLocaleString()}</div>
                   <div className="text-xs text-muted-foreground">Unique Devices</div>
                 </div>
               </div>
@@ -284,7 +284,7 @@ export default function UpdateDrawer({ update, onClose, onRefresh }: Props) {
             <Separator />
 
             {/* Actions */}
-            {!update.is_rollback && (
+            {!update.isRollback && (
               <section>
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Actions</h4>
                 <div className="flex flex-wrap gap-2">
@@ -339,7 +339,7 @@ export default function UpdateDrawer({ update, onClose, onRefresh }: Props) {
                         className="mt-1"
                         value={republishMessage}
                         onChange={e => setRepublishMessage(e.target.value)}
-                        placeholder={update.release_message || 'Republished update'}
+                        placeholder={update.releaseMessage || 'Republished update'}
                       />
                     </div>
                     <Button
@@ -371,7 +371,7 @@ export default function UpdateDrawer({ update, onClose, onRefresh }: Props) {
                       <div className="absolute -left-5 top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-background" />
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium">{actionLabel(entry.action)}</span>
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(entry.created_at)}</span>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(entry.createdAt)}</span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">{detailSummary(entry)}</p>
                     </div>

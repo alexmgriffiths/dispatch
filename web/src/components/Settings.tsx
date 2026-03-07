@@ -200,8 +200,8 @@ export default function Settings() {
 
   async function handleToggle(wh: WebhookRecord) {
     try {
-      await patchWebhook(wh.id, { isActive: !wh.is_active })
-      setWebhooks((prev) => prev.map((w) => (w.id === wh.id ? { ...w, is_active: !w.is_active } : w)))
+      await patchWebhook(wh.id, { isActive: !wh.isActive })
+      setWebhooks((prev) => prev.map((w) => (w.id === wh.id ? { ...w, isActive: !w.isActive } : w)))
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to update webhook') }
   }
 
@@ -940,12 +940,12 @@ function WebhookRow({
   }
 
   return (
-    <div className={cn('rounded-xl border bg-card overflow-hidden', !wh.is_active && 'opacity-60')}>
+    <div className={cn('rounded-xl border bg-card overflow-hidden', !wh.isActive && 'opacity-60')}>
       <div className="flex items-center justify-between p-4">
         <div className="space-y-1.5 min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="text-sm font-medium truncate">{wh.url}</span>
-            {wh.is_active ? <Badge variant="active">active</Badge> : <Badge variant="disabled">inactive</Badge>}
+            {wh.isActive ? <Badge variant="active">active</Badge> : <Badge variant="disabled">inactive</Badge>}
           </div>
           <div className="flex flex-wrap gap-1">
             {wh.events.map((ev) => (
@@ -960,7 +960,7 @@ function WebhookRow({
           </Button>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Active</span>
-            <Switch checked={wh.is_active} onCheckedChange={onToggle} />
+            <Switch checked={wh.isActive} onCheckedChange={onToggle} />
           </div>
           <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={onDelete}>
             <Trash2 className="h-4 w-4" />

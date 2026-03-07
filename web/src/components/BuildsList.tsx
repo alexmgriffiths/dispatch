@@ -95,38 +95,38 @@ export default function BuildsList({ onPublish }: Props) {
                 key={b.id}
                 className={cn(
                   'flex items-start justify-between gap-4 rounded-xl border bg-card p-4',
-                  b.is_published && 'opacity-60'
+                  b.isPublished && 'opacity-60'
                 )}
               >
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="font-semibold text-sm">v{b.runtime_version}</span>
+                    <span className="font-semibold text-sm truncate max-w-[120px]">{b.runtimeVersion}</span>
                     <Badge variant={b.platform as 'ios' | 'android'}>{b.platform}</Badge>
-                    {b.git_branch && (
+                    {b.gitBranch && (
                       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <GitBranch className="h-3 w-3" />
-                        {b.git_branch}
+                        {b.gitBranch}
                       </span>
                     )}
-                    {b.is_published ? (
+                    {b.isPublished ? (
                       <Badge variant="active">published</Badge>
                     ) : (
                       <Badge variant="staging">pending</Badge>
                     )}
                   </div>
                   <div className="text-xs font-mono text-muted-foreground truncate">
-                    {b.build_uuid}
-                    {b.git_commit_hash && <> &middot; {b.git_commit_hash.slice(0, 7)}</>}
+                    {b.buildUuid}
+                    {b.gitCommitHash && <> &middot; {b.gitCommitHash.slice(0, 7)}</>}
                   </div>
                   {b.message && <p className="text-sm text-foreground/80">{b.message}</p>}
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{timeAgo(b.created_at)}</span>
-                    <span>{b.asset_count} asset{b.asset_count !== 1 ? 's' : ''}</span>
+                    <span>{timeAgo(b.createdAt)}</span>
+                    <span>{b.assetCount} asset{b.assetCount !== 1 ? 's' : ''}</span>
                   </div>
                 </div>
 
                 <div className="shrink-0">
-                  {!b.is_published && (
+                  {!b.isPublished && (
                     <Button size="sm" onClick={() => onPublish(b.id)}>
                       Publish
                     </Button>

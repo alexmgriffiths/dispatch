@@ -150,18 +150,18 @@ export default function AuditLog() {
                   <Badge variant={actionBadgeVariant(entry.action)}>
                     {actionLabel(entry.action)}
                   </Badge>
-                  {entry.entity_id && (
+                  {entry.entityId && (
                     <span className="text-xs text-muted-foreground">
-                      {entry.entity_type} #{entry.entity_id}
+                      {entry.entityType} #{entry.entityId}
                     </span>
                   )}
-                  {entry.actor_name && (
+                  {entry.actorName && (
                     <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                      {entry.actor_type === 'api_key' ? <Key className="h-3 w-3" /> : <User className="h-3 w-3" />}
-                      {entry.actor_name}
+                      {entry.actorType === 'api_key' ? <Key className="h-3 w-3" /> : <User className="h-3 w-3" />}
+                      {entry.actorName}
                     </span>
                   )}
-                  <span className="text-xs text-muted-foreground ml-auto">{timeAgo(entry.created_at)}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">{timeAgo(entry.createdAt)}</span>
                 </div>
                 {Object.keys(entry.details).length > 0 && (
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">

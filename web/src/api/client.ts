@@ -62,29 +62,29 @@ async function authFetch(url: string, init?: RequestInit): Promise<Response> {
 
 export interface UpdateRecord {
   id: number;
-  runtime_version: string;
+  runtimeVersion: string;
   platform: string;
-  update_uuid: string;
-  is_rollback: boolean;
+  updateUuid: string;
+  isRollback: boolean;
   channel: string;
-  rollout_percentage: number;
-  is_critical: boolean;
-  is_enabled: boolean;
-  release_message: string;
-  expo_config: Record<string, unknown>;
-  created_at: string;
-  asset_count: number;
-  total_size: number;
-  group_id: string | null;
-  rollback_to_update_id: number | null;
-  branch_name: string | null;
-  total_downloads: number;
-  unique_devices: number;
-  runtime_fingerprint: string | null;
-  git_commit_hash: string | null;
-  git_branch: string | null;
-  ci_run_url: string | null;
-  build_message: string | null;
+  rolloutPercentage: number;
+  isCritical: boolean;
+  isEnabled: boolean;
+  releaseMessage: string;
+  expoConfig: Record<string, unknown>;
+  createdAt: string;
+  assetCount: number;
+  totalSize: number;
+  groupId: string | null;
+  rollbackToUpdateId: number | null;
+  branchName: string | null;
+  totalDownloads: number;
+  uniqueDevices: number;
+  runtimeFingerprint: string | null;
+  gitCommitHash: string | null;
+  gitBranch: string | null;
+  ciRunUrl: string | null;
+  buildMessage: string | null;
 }
 
 export interface UploadedAsset {
@@ -123,16 +123,16 @@ export interface PatchUpdatePayload {
 
 export interface BuildRecord {
   id: number;
-  build_uuid: string;
-  runtime_version: string;
+  buildUuid: string;
+  runtimeVersion: string;
   platform: string;
-  git_commit_hash: string | null;
-  git_branch: string | null;
-  ci_run_url: string | null;
+  gitCommitHash: string | null;
+  gitBranch: string | null;
+  ciRunUrl: string | null;
   message: string;
-  created_at: string;
-  asset_count: number;
-  is_published: boolean;
+  createdAt: string;
+  assetCount: number;
+  isPublished: boolean;
 }
 
 export interface PublishBuildPayload {
@@ -146,21 +146,21 @@ export interface PublishBuildPayload {
 export interface AuditLogRecord {
   id: number;
   action: string;
-  entity_type: string;
-  entity_id: number | null;
+  entityType: string;
+  entityId: number | null;
   details: Record<string, unknown>;
-  created_at: string;
-  actor_type: "user" | "api_key" | null;
-  actor_name: string | null;
+  createdAt: string;
+  actorType: "user" | "api_key" | null;
+  actorName: string | null;
 }
 
 export interface WebhookRecord {
   id: number;
   url: string;
   events: string[];
-  is_active: boolean;
+  isActive: boolean;
   secret: string | null;
-  created_at: string;
+  createdAt: string;
 }
 
 export interface WebhookDeliveryRecord {
@@ -222,7 +222,7 @@ export interface InviteResponse {
 export interface BranchRecord {
   id: number;
   name: string;
-  created_at: string;
+  createdAt: string;
 }
 
 export interface ChannelRecord {
@@ -399,7 +399,7 @@ export async function getUpdateHistory(
     const { mockAuditLog } = await import("./mock");
     return structuredClone(
       mockAuditLog.filter(
-        (e) => e.entity_type === "update" && e.entity_id === updateId,
+        (e) => e.entityType === "update" && e.entityId === updateId,
       ),
     );
   }
@@ -427,20 +427,20 @@ export async function listUpdates(
     if (params?.channel)
       results = results.filter((u) => u.channel === params.channel);
     if (params?.branch)
-      results = results.filter((u) => u.branch_name === params.branch);
+      results = results.filter((u) => u.branchName === params.branch);
     if (params?.runtime_version)
       results = results.filter(
-        (u) => u.runtime_version === params.runtime_version,
+        (u) => u.runtimeVersion === params.runtime_version,
       );
     if (params?.search) {
       const q = params.search.toLowerCase();
       results = results.filter(
         (u) =>
-          u.release_message.toLowerCase().includes(q) ||
-          u.update_uuid.toLowerCase().includes(q) ||
-          u.runtime_version.toLowerCase().includes(q) ||
-          (u.git_commit_hash && u.git_commit_hash.toLowerCase().includes(q)) ||
-          (u.git_branch && u.git_branch.toLowerCase().includes(q)),
+          u.releaseMessage.toLowerCase().includes(q) ||
+          u.updateUuid.toLowerCase().includes(q) ||
+          u.runtimeVersion.toLowerCase().includes(q) ||
+          (u.gitCommitHash && u.gitCommitHash.toLowerCase().includes(q)) ||
+          (u.gitBranch && u.gitBranch.toLowerCase().includes(q)),
       );
     }
     return results;
@@ -602,9 +602,9 @@ export async function createWebhook(
       id: Math.floor(Math.random() * 1000),
       url: payload.url,
       events: payload.events,
-      is_active: true,
+      isActive: true,
       secret: payload.secret || null,
-      created_at: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
     };
   }
   const res = await authFetch(`${BASE}/webhooks`, {
@@ -711,7 +711,7 @@ export async function createBranch(name: string): Promise<BranchRecord> {
     return {
       id: Math.floor(Math.random() * 1000),
       name,
-      created_at: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
     };
   }
   const res = await authFetch(`${BASE}/branches`, {
