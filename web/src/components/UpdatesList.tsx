@@ -181,7 +181,7 @@ export default function UpdatesList({ onPublish }: Props) {
   }
 
   // For a group, use the first update as the "primary" for shared fields
-  function renderGroup(group: UpdateGroup, idx: number) {
+  function renderGroup(group: UpdateGroup) {
     const primary = group.updates[0]
     const isMultiPlatform = group.updates.length > 1
     const allDisabled = group.updates.every(u => !u.isEnabled)
@@ -193,7 +193,6 @@ export default function UpdatesList({ onPublish }: Props) {
     return (
       <div
         key={group.groupId ?? primary.id}
-        id={idx === 0 ? 'tour-first-release' : undefined}
         className={cn(
           'rounded-xl border bg-card transition-colors',
           allDisabled && 'opacity-60'
@@ -242,11 +241,10 @@ export default function UpdatesList({ onPublish }: Props) {
         {/* Per-platform rows */}
         {isMultiPlatform ? (
           <div className="border-t divide-y">
-            {group.updates.map((u, uIdx) => (
+            {group.updates.map((u) => (
               <PlatformRow
                 key={u.id}
                 update={u}
-                isFirst={idx === 0 && uIdx === 0}
                 timeAgo={timeAgo}
                 onToggleEnabled={toggleEnabled}
                 onToggleCritical={toggleCritical}
@@ -259,7 +257,6 @@ export default function UpdatesList({ onPublish }: Props) {
           <div className="border-t">
             <PlatformRow
               update={primary}
-              isFirst={idx === 0}
               timeAgo={timeAgo}
               onToggleEnabled={toggleEnabled}
               onToggleCritical={toggleCritical}
@@ -281,7 +278,7 @@ export default function UpdatesList({ onPublish }: Props) {
             <h2 className="text-lg font-semibold">Releases</h2>
             <p className="text-sm text-muted-foreground">Manage OTA updates across channels and platforms</p>
           </div>
-          <Button id="tour-publish-btn" onClick={onPublish}>
+          <Button onClick={onPublish}>
             <Plus className="h-4 w-4" />
             Publish update
           </Button>
@@ -390,7 +387,7 @@ export default function UpdatesList({ onPublish }: Props) {
           </div>
         ) : (
           <div className="space-y-3">
-            {groups.map((group, idx) => renderGroup(group, idx))}
+            {groups.map((group) => renderGroup(group))}
           </div>
         )}
       </div>
@@ -406,7 +403,6 @@ export default function UpdatesList({ onPublish }: Props) {
 
 function PlatformRow({
   update: u,
-  isFirst,
   timeAgo,
   onToggleEnabled,
   onToggleCritical,
@@ -415,7 +411,6 @@ function PlatformRow({
   hidePlatform,
 }: {
   update: UpdateRecord
-  isFirst: boolean
   timeAgo: (d: string) => string
   onToggleEnabled: (u: UpdateRecord) => void
   onToggleCritical: (u: UpdateRecord) => void
@@ -446,20 +441,19 @@ function PlatformRow({
 
       <div
         className="flex items-center gap-4 shrink-0"
-        {...(isFirst ? { id: 'tour-controls' } : {})}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-1.5" {...(isFirst ? { id: 'tour-active-toggle' } : {})}>
+        <div className="flex items-center gap-1.5">
           <span className="text-[11px] text-muted-foreground">Active</span>
           <InfoTip>When disabled, devices will skip this update and receive the next active one instead.</InfoTip>
           <Switch checked={u.isEnabled} onCheckedChange={() => onToggleEnabled(u)} />
         </div>
-        <div className="flex items-center gap-1.5" {...(isFirst ? { id: 'tour-critical-toggle' } : {})}>
+        <div className="flex items-center gap-1.5">
           <span className="text-[11px] text-muted-foreground">Critical</span>
           <InfoTip>Forces an immediate app reload instead of waiting for the next cold start. Use for security or data-loss fixes.</InfoTip>
           <Switch checked={u.isCritical} onCheckedChange={() => onToggleCritical(u)} />
         </div>
-        <div className="flex items-center gap-1.5" {...(isFirst ? { id: 'tour-rollout-slider' } : {})}>
+        <div className="flex items-center gap-1.5">
           <span className="text-[11px] text-muted-foreground">Rollout</span>
           <InfoTip>Percentage of devices that will receive this update. Uses deterministic bucketing so each device always gets a consistent result.</InfoTip>
           <div className="flex items-center gap-1.5 w-24">

@@ -44,6 +44,9 @@ enum Commands {
         /// Upload build without publishing (publish later from the dashboard)
         #[arg(long, default_value = "false")]
         no_publish: bool,
+        /// Override the runtime version (skip fingerprint computation)
+        #[arg(long)]
+        runtime_version: Option<String>,
     },
 }
 
@@ -61,6 +64,7 @@ async fn main() {
             rollout,
             critical,
             no_publish,
+            runtime_version,
         } => {
             commands::publish::run(commands::publish::PublishOptions {
                 channel,
@@ -69,6 +73,7 @@ async fn main() {
                 rollout,
                 critical,
                 no_publish,
+                runtime_version,
             })
             .await
         }

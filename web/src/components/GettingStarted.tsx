@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
-import { Check, Copy, ChevronRight, Smartphone, GitBranch, Zap, Shield, BarChart3, Layers, X } from 'lucide-react'
+import { Check, Copy, ChevronRight, Smartphone, GitBranch, Zap, Shield, BarChart3, Layers, X, Terminal, Key } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface Props {
@@ -10,8 +10,9 @@ interface Props {
 }
 
 export default function GettingStarted({ projectUuid, onNavigate, onDismiss }: Props) {
-  const [openSection, setOpenSection] = useState<string | null>('setup')
+  const [openSection, setOpenSection] = useState<string | null>('apikey')
   const [copied, setCopied] = useState<string | null>(null)
+  const [setupTab, setSetupTab] = useState<'cli' | 'manual'>('cli')
 
   function copyText(text: string, id: string) {
     navigator.clipboard.writeText(text)
@@ -37,25 +38,100 @@ export default function GettingStarted({ projectUuid, onNavigate, onDismiss }: P
       </div>
 
       <div className="p-6 max-w-3xl space-y-3">
-        {/* Step 1: App Setup */}
+        {/* Step 1: API Key */}
         <Section
           number={1}
+          title="Create an API key"
+          icon={<Key className="h-4 w-4" />}
+          open={openSection === 'apikey'}
+          onToggle={() => toggle('apikey')}
+        >
+          <p className="text-sm text-muted-foreground mb-3">
+            Generate an API key to authenticate the CLI and CI/CD pipelines. You'll need this for the next step.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => onNavigate('settings')}>
+            Go to Settings &gt; API Keys
+          </Button>
+        </Section>
+
+        {/* Step 2: App Setup */}
+        <Section
+          number={2}
           title="Configure your app"
           icon={<Smartphone className="h-4 w-4" />}
           open={openSection === 'setup'}
           onToggle={() => toggle('setup')}
         >
-          <p className="text-sm text-muted-foreground mb-3">
-            Add the update server URL to your <code className="text-xs bg-muted px-1 py-0.5 rounded">app.json</code> and install the expo-updates package.
-            No custom SDK needed — the standard <code className="text-xs bg-muted px-1 py-0.5 rounded">expo-updates</code> client works out of the box.
-          </p>
+          <div className="flex gap-1 mb-4 rounded-lg bg-muted p-1">
+            <button
+              onClick={() => setSetupTab('cli')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                setupTab === 'cli' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Terminal className="h-3 w-3" />
+              CLI (recommended)
+            </button>
+            <button
+              onClick={() => setSetupTab('manual')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                setupTab === 'manual' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Smartphone className="h-3 w-3" />
+              Manual
+            </button>
+          </div>
 
-          <CodeBlock
-            id="app-json"
-            language="json"
-            copied={copied}
-            onCopy={copyText}
-            code={`{
+          {setupTab === 'cli' ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Install the Dispatch CLI and run two commands from your Expo project root. It handles <code className="text-xs bg-muted px-1 py-0.5 rounded">app.json</code> configuration, installs dependencies, and sets up fingerprint-based versioning automatically.
+              </p>
+
+              <CodeBlock
+                id="cli-install"
+                language="bash"
+                copied={copied}
+                onCopy={copyText}
+                code="curl -fsSL https://github.com/dispatchOTA/cli/releases/latest/download/dispatch-aarch64-apple-darwin -o /usr/local/bin/dispatch && chmod +x /usr/local/bin/dispatch"
+              />
+
+              <CodeBlock
+                id="cli-login"
+                language="bash"
+                copied={copied}
+                onCopy={copyText}
+                code={`dispatch login --server ${window.location.origin} --key <your-api-key>`}
+              />
+
+              <CodeBlock
+                id="cli-init"
+                language="bash"
+                copied={copied}
+                onCopy={copyText}
+                code="dispatch init"
+              />
+
+              <p className="text-xs text-muted-foreground">
+                <code className="text-xs bg-muted px-1 py-0.5 rounded">dispatch init</code> will prompt you to select a project, install <code className="text-xs bg-muted px-1 py-0.5 rounded">expo-updates</code>, and patch your <code className="text-xs bg-muted px-1 py-0.5 rounded">app.json</code> with the correct manifest URL and fingerprint-based versioning.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Add the update server URL to your <code className="text-xs bg-muted px-1 py-0.5 rounded">app.json</code> and install the expo-updates package.
+                No custom SDK needed — the standard <code className="text-xs bg-muted px-1 py-0.5 rounded">expo-updates</code> client works out of the box.
+              </p>
+
+              <CodeBlock
+                id="app-json"
+                language="json"
+                copied={copied}
+                onCopy={copyText}
+                code={`{
   "expo": {
     "updates": {
       "url": "${window.location.origin}/v1/ota/manifest/${projectUuid || '<project-uuid>'}",
@@ -65,56 +141,67 @@ export default function GettingStarted({ projectUuid, onNavigate, onDismiss }: P
     "runtimeVersion": "1.0.0"
   }
 }`}
-          />
+              />
 
-          <CodeBlock
-            id="install"
-            language="bash"
-            copied={copied}
-            onCopy={copyText}
-            code="npx expo install expo-updates"
-          />
+              <CodeBlock
+                id="install"
+                language="bash"
+                copied={copied}
+                onCopy={copyText}
+                code="npx expo install expo-updates"
+              />
+            </div>
+          )}
         </Section>
 
-        {/* Step 2: CI/CD */}
+        {/* Step 3: Publish */}
         <Section
-          number={2}
-          title="Set up CI/CD"
+          number={3}
+          title="Publish an update"
           icon={<Zap className="h-4 w-4" />}
           open={openSection === 'cicd'}
           onToggle={() => toggle('cicd')}
         >
           <p className="text-sm text-muted-foreground mb-3">
-            Copy the workflow file to your app repo. Every push to <code className="text-xs bg-muted px-1 py-0.5 rounded">main</code> will
-            export your JS bundle, upload it, and publish to production. Native changes are auto-detected and skipped.
+            Publish updates from the CLI or automate with CI/CD. The CLI exports your JS bundles, uploads them, and publishes in one command.
           </p>
 
-          <div className="rounded-lg border bg-muted/30 p-3 space-y-2 mb-3">
-            <p className="text-xs font-semibold">Add to your GitHub repo settings:</p>
-            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-              <span className="text-muted-foreground">Variable</span>
-              <span><code className="bg-muted px-1 py-0.5 rounded">OTA_SERVER_URL</code> — your server URL (e.g. <code className="bg-muted px-1 py-0.5 rounded">https://ota.example.com/v1/ota</code>)</span>
-              <span className="text-muted-foreground">Secret</span>
-              <span><code className="bg-muted px-1 py-0.5 rounded">OTA_API_KEY</code> — create one in <button className="text-primary hover:underline" onClick={() => onNavigate('settings')}>Settings &gt; API Keys</button></span>
-            </div>
-          </div>
-
           <CodeBlock
-            id="workflow-path"
+            id="cli-publish"
             language="bash"
             copied={copied}
             onCopy={copyText}
-            code="cp examples/ota-deploy.yml your-app/.github/workflows/ota-deploy.yml"
+            code={`# Publish to production (default)
+dispatch publish
+
+# Upload without publishing (review in dashboard first)
+dispatch publish --no-publish
+
+# Publish to a specific channel with options
+dispatch publish --channel staging --rollout 50 --message "Bug fixes"`}
           />
 
-          <p className="text-xs text-muted-foreground mt-2">
-            You can also trigger deploys manually from GitHub Actions with options for channel, rollout %, and critical flag.
-          </p>
+          <div className="rounded-lg border bg-muted/30 p-3 space-y-2 mt-3 mb-3">
+            <p className="text-xs font-semibold">CI/CD with GitHub Actions</p>
+            <p className="text-xs text-muted-foreground">
+              Add these to your GitHub repo settings, then use <code className="bg-muted px-1 py-0.5 rounded">dispatch login</code> and <code className="bg-muted px-1 py-0.5 rounded">dispatch publish</code> in your workflow.
+            </p>
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+              <span className="text-muted-foreground">Secret</span>
+              <span><code className="bg-muted px-1 py-0.5 rounded">DISPATCH_SERVER</code> — your server URL (e.g. <code className="bg-muted px-1 py-0.5 rounded">{window.location.origin}</code>)</span>
+              <span className="text-muted-foreground">Secret</span>
+              <span><code className="bg-muted px-1 py-0.5 rounded">DISPATCH_API_KEY</code> — create one in <button className="text-primary hover:underline" onClick={() => onNavigate('settings')}>Settings &gt; API Keys</button></span>
+            </div>
+          </div>
         </Section>
 
-        {/* Step 3: Channels & Branches */}
+        <div className="pt-2 pb-1">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Concepts</p>
+        </div>
+
+        {/* Step 4: Channels & Branches */}
         <Section
-          number={3}
+          number={4}
           title="Channels & branches"
           icon={<GitBranch className="h-4 w-4" />}
           open={openSection === 'channels'}
@@ -146,9 +233,9 @@ export default function GettingStarted({ projectUuid, onNavigate, onDismiss }: P
           </p>
         </Section>
 
-        {/* Step 4: Rollout & Rollback */}
+        {/* Step 5: Rollout & Rollback */}
         <Section
-          number={4}
+          number={5}
           title="Rollout & rollback"
           icon={<Layers className="h-4 w-4" />}
           open={openSection === 'rollout'}
@@ -190,9 +277,9 @@ export default function GettingStarted({ projectUuid, onNavigate, onDismiss }: P
           </Button>
         </Section>
 
-        {/* Step 5: Monitor */}
+        {/* Step 6: Monitor */}
         <Section
-          number={5}
+          number={6}
           title="Monitor adoption"
           icon={<BarChart3 className="h-4 w-4" />}
           open={openSection === 'monitor'}
@@ -207,9 +294,9 @@ export default function GettingStarted({ projectUuid, onNavigate, onDismiss }: P
           </Button>
         </Section>
 
-        {/* Step 6: Code Signing */}
+        {/* Step 7: Code Signing */}
         <Section
-          number={6}
+          number={7}
           title="Code signing (optional)"
           icon={<Shield className="h-4 w-4" />}
           open={openSection === 'signing'}

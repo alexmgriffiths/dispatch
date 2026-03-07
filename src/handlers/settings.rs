@@ -232,7 +232,9 @@ pub async fn handle_gc_run(
 
 async fn compute_gc_stats(state: &AppState, project_id: i64) -> Result<GcStatsResponse, AppError> {
     let (orphaned_keys, orphaned_size) = find_orphaned_keys(state, project_id).await?;
-    let total = list_all_s3_keys(state, "assets/").await?.len() as i64;
+    let asset_keys = list_all_s3_keys(state, "assets/").await?;
+    let build_keys = list_all_s3_keys(state, "builds/").await?;
+    let total = (asset_keys.len() + build_keys.len()) as i64;
 
     Ok(GcStatsResponse {
         total_s3_objects: total,
@@ -260,8 +262,9 @@ async fn find_orphaned_keys(state: &AppState, project_id: i64) -> Result<(Vec<St
         asset_keys.into_iter().chain(build_keys).collect()
     };
 
-    // List all objects in S3 under the assets/ prefix
-    let s3_objects = list_all_s3_objects(state, "assets/").await?;
+    // List all objects in S3 under both prefixes
+    let mut s3_objects = list_all_s3_objects(state, "assets/").await?;
+    s3_objects.extend(list_all_s3_objects(state, "builds/").await?);
 
     let mut orphaned_keys = Vec::new();
     let mut orphaned_size: i64 = 0;

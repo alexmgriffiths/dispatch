@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import DispatchLogo from './DispatchLogo'
-import { Check, Copy, ChevronRight, ChevronLeft, Rocket, User, FolderOpen, Key, Code, ArrowRight, GitBranch } from 'lucide-react'
+import { Check, Copy, ChevronRight, ChevronLeft, Rocket, User, FolderOpen, Key, Code, ArrowRight, GitBranch, Terminal, Smartphone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -365,72 +365,13 @@ export default function Onboarding({ onComplete }: Props) {
           )}
 
           {step === 'configure' && (
-            <div className="p-8 space-y-6">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-primary">
-                  <Code className="h-4 w-4" />
-                  <span className="text-xs font-medium uppercase tracking-wider">Step 4</span>
-                </div>
-                <h2 className="text-xl font-semibold">Configure your app</h2>
-                <p className="text-sm text-muted-foreground">
-                  Add the update server URL to your Expo app config.
-                </p>
-              </div>
-
-              {apiKey && (
-                <div className="rounded-lg border bg-emerald-500/5 border-emerald-500/20 p-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    <p className="text-sm font-medium">API key created</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <code className="text-xs bg-muted px-2 py-1 rounded font-mono flex-1 break-all">{apiKey.key}</code>
-                    <button
-                      onClick={() => copyText(apiKey.key, 'apikey')}
-                      className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                    >
-                      {copied === 'apikey' ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Save this key — it won't be shown again. Add it as <code className="bg-muted px-1 rounded">OTA_API_KEY</code> in your CI secrets.
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-3">
-                <div className="rounded-lg border bg-muted overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-1.5 border-b">
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">app.json</span>
-                    <button
-                      onClick={() => copyText(appJsonSnippet, 'appjson')}
-                      className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
-                    >
-                      {copied === 'appjson' ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                    </button>
-                  </div>
-                  <pre className="p-3 text-xs overflow-x-auto"><code>{appJsonSnippet}</code></pre>
-                </div>
-
-                <div className="rounded-lg border bg-muted overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-1.5 border-b">
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">terminal</span>
-                    <button
-                      onClick={() => copyText('npx expo install expo-updates', 'install')}
-                      className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
-                    >
-                      {copied === 'install' ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                    </button>
-                  </div>
-                  <pre className="p-3 text-xs"><code>npx expo install expo-updates</code></pre>
-                </div>
-              </div>
-
-              <Button className="w-full" onClick={() => setStep('done')}>
-                Continue
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
+            <ConfigureStep
+              apiKey={apiKey}
+              copied={copied}
+              onCopy={copyText}
+              appJsonSnippet={appJsonSnippet}
+              onContinue={() => setStep('done')}
+            />
           )}
 
           {step === 'done' && (
@@ -489,6 +430,163 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-4 py-2.5">
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="text-sm font-medium font-mono">{value}</span>
+    </div>
+  )
+}
+
+function ConfigureStep({
+  apiKey,
+  copied,
+  onCopy,
+  appJsonSnippet,
+  onContinue,
+}: {
+  apiKey: CreateApiKeyResponse | null
+  copied: string | null
+  onCopy: (text: string, id: string) => void
+  appJsonSnippet: string
+  onContinue: () => void
+}) {
+  const [tab, setTab] = useState<'cli' | 'manual'>('cli')
+
+  const loginCmd = `dispatch login --server ${window.location.origin} --key ${apiKey ? apiKey.key : '<your-api-key>'}`
+
+  return (
+    <div className="p-8 space-y-6">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-primary">
+          <Code className="h-4 w-4" />
+          <span className="text-xs font-medium uppercase tracking-wider">Step 4</span>
+        </div>
+        <h2 className="text-xl font-semibold">Configure your app</h2>
+        <p className="text-sm text-muted-foreground">
+          Set up your Expo project to receive OTA updates from Dispatch.
+        </p>
+      </div>
+
+      {apiKey && (
+        <div className="rounded-lg border bg-emerald-500/5 border-emerald-500/20 p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <Check className="h-4 w-4 text-emerald-500" />
+            <p className="text-sm font-medium">API key created</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="text-xs bg-muted px-2 py-1 rounded font-mono flex-1 break-all">{apiKey.key}</code>
+            <button
+              onClick={() => onCopy(apiKey.key, 'apikey')}
+              className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            >
+              {copied === 'apikey' ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+            </button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Save this key — it won't be shown again.
+          </p>
+        </div>
+      )}
+
+      <div className="flex gap-1 rounded-lg bg-muted p-1">
+        <button
+          onClick={() => setTab('cli')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+            tab === 'cli' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Terminal className="h-3 w-3" />
+          CLI (recommended)
+        </button>
+        <button
+          onClick={() => setTab('manual')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+            tab === 'manual' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Smartphone className="h-3 w-3" />
+          Manual
+        </button>
+      </div>
+
+      {tab === 'cli' ? (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Run these commands from your Expo project root. The CLI installs dependencies, patches your <code className="text-xs bg-muted px-1 py-0.5 rounded">app.json</code>, and sets up fingerprint-based versioning automatically.
+          </p>
+
+          <OnboardingCodeBlock
+            id="cli-login"
+            language="bash"
+            copied={copied}
+            onCopy={onCopy}
+            code={loginCmd}
+          />
+
+          <OnboardingCodeBlock
+            id="cli-init"
+            language="bash"
+            copied={copied}
+            onCopy={onCopy}
+            code="dispatch init"
+          />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Add the update server URL to your <code className="text-xs bg-muted px-1 py-0.5 rounded">app.json</code> and install the expo-updates package.
+          </p>
+
+          <OnboardingCodeBlock
+            id="appjson"
+            language="app.json"
+            copied={copied}
+            onCopy={onCopy}
+            code={appJsonSnippet}
+          />
+
+          <OnboardingCodeBlock
+            id="install"
+            language="terminal"
+            copied={copied}
+            onCopy={onCopy}
+            code="npx expo install expo-updates"
+          />
+        </div>
+      )}
+
+      <Button className="w-full" onClick={onContinue}>
+        Continue
+        <ChevronRight className="h-4 w-4 ml-1" />
+      </Button>
+    </div>
+  )
+}
+
+function OnboardingCodeBlock({
+  id,
+  code,
+  language,
+  copied,
+  onCopy,
+}: {
+  id: string
+  code: string
+  language: string
+  copied: string | null
+  onCopy: (text: string, id: string) => void
+}) {
+  return (
+    <div className="rounded-lg border bg-muted overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b">
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{language}</span>
+        <button
+          onClick={() => onCopy(code, id)}
+          className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+        >
+          {copied === id ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      <pre className="p-3 text-xs overflow-x-auto"><code>{code}</code></pre>
     </div>
   )
 }

@@ -15,6 +15,7 @@ pub struct PublishOptions {
     pub rollout: i32,
     pub critical: bool,
     pub no_publish: bool,
+    pub runtime_version: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,14 +69,20 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
         .cloned()
         .unwrap_or_else(|| app_json.clone());
 
-    // Compute fingerprint
-    println!("{} Computing runtime fingerprint...", style("*").cyan());
-    let fingerprint = compute_fingerprint(&cwd)?;
-    println!("  Fingerprint: {}", style(&fingerprint).dim());
-
-    // Get runtime version from app.json or use fingerprint
-    let runtime_version = get_runtime_version(&expo_config, &fingerprint);
-    println!("  Runtime version: {}", style(&runtime_version).dim());
+    // Determine runtime version
+    let (runtime_version, fingerprint) = if let Some(ref rv) = opts.runtime_version {
+        println!("{} Using provided runtime version: {}", style("*").cyan(), style(rv).dim());
+        (rv.clone(), None)
+    } else {
+        // Ensure native dirs exist so fingerprint matches what expo run:ios baked in
+        ensure_prebuild(&cwd)?;
+        println!("{} Computing runtime fingerprint...", style("*").cyan());
+        let fp = compute_fingerprint(&cwd)?;
+        println!("  Fingerprint: {}", style(&fp).dim());
+        let rv = get_runtime_version(&expo_config, &fp);
+        println!("  Runtime version: {}", style(&rv).dim());
+        (rv, Some(fp))
+    };
 
     let dist_dir = cwd.join("dist");
 
@@ -189,7 +196,7 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
                 git_commit.as_deref(),
                 git_branch.as_deref(),
                 &message,
-                Some(&fingerprint),
+                fingerprint.as_deref(),
                 &assets,
             )
             .await?;
@@ -250,12 +257,48 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
     Ok(())
 }
 
-fn compute_fingerprint(cwd: &Path) -> Result<String> {
-    let output = Command::new("npx")
-        .args(["--yes", "@expo/fingerprint", "."])
+fn ensure_prebuild(cwd: &Path) -> Result<()> {
+    let ios_dir = cwd.join("ios");
+    let android_dir = cwd.join("android");
+
+    if ios_dir.exists() && android_dir.exists() {
+        return Ok(());
+    }
+
+    println!(
+        "{} Running expo prebuild for accurate fingerprint...",
+        style("*").cyan()
+    );
+    let status = Command::new("npx")
+        .args(["expo", "prebuild", "--no-install"])
         .current_dir(cwd)
-        .output()
-        .context("Failed to run @expo/fingerprint")?;
+        .status()
+        .context("Failed to run expo prebuild")?;
+
+    if !status.success() {
+        bail!("expo prebuild failed. The ios/ and android/ directories are needed for accurate fingerprint computation.");
+    }
+
+    Ok(())
+}
+
+fn compute_fingerprint(cwd: &Path) -> Result<String> {
+    // Try the project-local @expo/fingerprint first (matches what expo run:ios uses),
+    // then fall back to npx
+    let local_bin = cwd.join("node_modules/.bin/expo-fingerprint");
+    let output = if local_bin.exists() {
+        Command::new(&local_bin)
+            .arg(".")
+            .current_dir(cwd)
+            .output()
+            .context("Failed to run local @expo/fingerprint")?
+    } else {
+        Command::new("npx")
+            .args(["@expo/fingerprint", "."])
+            .current_dir(cwd)
+            .output()
+            .context("Failed to run @expo/fingerprint")?
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -264,7 +307,7 @@ fn compute_fingerprint(cwd: &Path) -> Result<String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     // The output is a JSON object with a "hash" field
-    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&stdout.trim()) {
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(stdout.trim()) {
         if let Some(hash) = parsed.get("hash").and_then(|h| h.as_str()) {
             return Ok(hash.to_string());
         }
