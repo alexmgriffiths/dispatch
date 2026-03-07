@@ -61,10 +61,11 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
     let app_json: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&app_json_path)?)
             .context("Failed to parse app.json")?;
+    // Support both { "expo": { ... } } and flat { "name": "...", ... } formats
     let expo_config = app_json
         .get("expo")
         .cloned()
-        .unwrap_or(serde_json::json!({}));
+        .unwrap_or_else(|| app_json.clone());
 
     // Compute fingerprint
     println!("{} Computing runtime fingerprint...", style("*").cyan());

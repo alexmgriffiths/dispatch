@@ -10,24 +10,33 @@ use crate::handlers::audit::record_audit;
 use crate::models::Project;
 use crate::routes::AppState;
 
-/// List all projects the current user has access to.
+/// List projects accessible to the caller.
+/// User sessions: all projects the user is a member of.
+/// API keys: the single project the key is scoped to.
 pub async fn handle_list_projects(
     State(state): State<AppState>,
     auth: RequireAuth,
 ) -> Result<impl IntoResponse, AppError> {
-    let user_id = auth
-        .user_id
-        .ok_or_else(|| AppError::BadRequest("API keys are scoped to a single project".into()))?;
-
-    let projects = sqlx::query_as::<_, Project>(
-        "SELECT p.* FROM projects p
-         JOIN project_members pm ON pm.project_id = p.id
-         WHERE pm.user_id = $1
-         ORDER BY p.created_at ASC",
-    )
-    .bind(user_id)
-    .fetch_all(&state.db)
-    .await?;
+    let projects = if let Some(user_id) = auth.user_id {
+        sqlx::query_as::<_, Project>(
+            "SELECT p.* FROM projects p
+             JOIN project_members pm ON pm.project_id = p.id
+             WHERE pm.user_id = $1
+             ORDER BY p.created_at ASC",
+        )
+        .bind(user_id)
+        .fetch_all(&state.db)
+        .await?
+    } else if let Some(project_id) = auth.project_id {
+        sqlx::query_as::<_, Project>(
+            "SELECT * FROM projects WHERE id = $1",
+        )
+        .bind(project_id)
+        .fetch_all(&state.db)
+        .await?
+    } else {
+        vec![]
+    };
 
     Ok(Json(projects))
 }

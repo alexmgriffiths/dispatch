@@ -108,9 +108,12 @@ fn patch_app_json(path: &Path, server_url: &str, project_uuid: &str) -> Result<(
     let mut root: serde_json::Value = serde_json::from_str(&content)
         .context("Failed to parse app.json")?;
 
-    let expo = root
-        .get_mut("expo")
-        .context("app.json missing \"expo\" key")?;
+    // Support both { "expo": { ... } } and flat { "name": "...", ... } formats
+    let target = if root.get("expo").is_some() {
+        root.get_mut("expo").unwrap()
+    } else {
+        &mut root
+    };
 
     let server_url = server_url.trim_end_matches('/');
     let manifest_url = format!("{server_url}/v1/ota/manifest/{project_uuid}");
@@ -121,12 +124,12 @@ fn patch_app_json(path: &Path, server_url: &str, project_uuid: &str) -> Result<(
         "enabled": true,
         "checkAutomatically": "ON_LOAD"
     });
-    expo.as_object_mut()
+    target.as_object_mut()
         .unwrap()
         .insert("updates".to_string(), updates);
 
     // Set runtimeVersion to fingerprint policy
-    expo.as_object_mut()
+    target.as_object_mut()
         .unwrap()
         .insert("runtimeVersion".to_string(), serde_json::json!({
             "policy": "fingerprint"
