@@ -273,13 +273,9 @@ fn export_bundles(cwd: &Path, platform: Option<&str>) -> Result<()> {
         None => vec!["ios", "android"],
     };
 
-    for (i, plat) in platforms.iter().enumerate() {
-        let mut args = vec!["expo", "export", "--output-dir", "dist", "--platform", plat];
-        if i == 0 {
-            args.push("--clear");
-        }
+    for plat in &platforms {
         let status = Command::new("npx")
-            .args(&args)
+            .args(["expo", "export", "--output-dir", "dist", "--platform", plat])
             .current_dir(cwd)
             .status()
             .with_context(|| format!("Failed to run expo export for {plat}"))?;

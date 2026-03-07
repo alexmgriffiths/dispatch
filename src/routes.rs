@@ -1,6 +1,7 @@
 use aws_sdk_s3::Client as S3Client;
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     routing::{delete, get, patch, post},
 };
 use rsa::RsaPrivateKey;
@@ -82,7 +83,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/updates/{id}/history", get(handle_update_history))
         .route("/assets/upload", post(handle_upload_asset))
         .route("/assets/presign", post(handle_presign_upload))
-        .route("/builds", get(handle_list_builds).post(handle_upload_build))
+        .route("/builds", get(handle_list_builds).post(handle_upload_build).layer(DefaultBodyLimit::max(256 * 1024 * 1024)))
         .route("/builds/{id}", delete(handle_delete_build))
         .route("/builds/{id}/publish", post(handle_publish_build))
         .route("/rollback", post(handle_create_rollback))
