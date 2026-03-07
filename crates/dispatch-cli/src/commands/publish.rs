@@ -80,7 +80,8 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
     let dist_dir = cwd.join("dist");
     println!();
     println!("{} Exporting bundles...", style("*").cyan());
-    export_bundles(&cwd)?;
+    export_bundles(&cwd, opts.platform.as_deref())?;
+
 
     // Parse metadata
     let metadata_path = dist_dir.join("metadata.json");
@@ -266,15 +267,26 @@ fn get_runtime_version(expo_config: &serde_json::Value, fingerprint: &str) -> St
     fingerprint.to_string()
 }
 
-fn export_bundles(cwd: &Path) -> Result<()> {
-    let status = Command::new("npx")
-        .args(["expo", "export", "--output-dir", "dist"])
-        .current_dir(cwd)
-        .status()
-        .context("Failed to run expo export")?;
+fn export_bundles(cwd: &Path, platform: Option<&str>) -> Result<()> {
+    let platforms = match platform {
+        Some(p) => vec![p],
+        None => vec!["ios", "android"],
+    };
 
-    if !status.success() {
-        bail!("expo export failed with status {status}");
+    for (i, plat) in platforms.iter().enumerate() {
+        let mut args = vec!["expo", "export", "--output-dir", "dist", "--platform", plat];
+        if i == 0 {
+            args.push("--clear");
+        }
+        let status = Command::new("npx")
+            .args(&args)
+            .current_dir(cwd)
+            .status()
+            .with_context(|| format!("Failed to run expo export for {plat}"))?;
+
+        if !status.success() {
+            bail!("expo export failed for {plat} with status {status}");
+        }
     }
     Ok(())
 }
