@@ -131,7 +131,7 @@ impl ApiClient {
 
         let resp = self
             .client
-            .post(format!("{}/v1/ota/build", self.base_url))
+            .post(format!("{}/v1/ota/builds", self.base_url))
             .bearer_auth(&self.api_key)
             .multipart(form)
             .send()
@@ -154,7 +154,7 @@ impl ApiClient {
     ) -> Result<PublishResponse> {
         let resp = self
             .client
-            .post(format!("{}/v1/ota/build/{build_id}/publish", self.base_url))
+            .post(format!("{}/v1/ota/builds/{build_id}/publish", self.base_url))
             .bearer_auth(&self.api_key)
             .json(req)
             .send()
