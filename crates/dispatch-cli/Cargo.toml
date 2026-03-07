@@ -10,7 +10,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.13.2", default-features = false, features = [
-    "rustls-tls",
+    "rustls",
     "json",
     "multipart",
 ] }
