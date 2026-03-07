@@ -178,7 +178,7 @@ fn mime_from_ext(filename: &str) -> &str {
         .and_then(|e| e.to_str())
         .unwrap_or("");
     match ext {
-        "js" => "application/javascript",
+        "js" | "hbc" => "application/javascript",
         "json" => "application/json",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",

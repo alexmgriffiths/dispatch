@@ -216,9 +216,10 @@ pub async fn handle_upload_build(
                 .map_err(|e| AppError::Internal(format!("S3 upload failed: {e}")))?;
         }
 
-        // Auto-detect launch asset: first .js file
+        // Auto-detect launch asset: JS bundle or Hermes bytecode
         let is_launch_asset = asset.content_type == "application/javascript"
-            || asset.file_name.ends_with(".js");
+            || asset.file_name.ends_with(".js")
+            || asset.file_name.ends_with(".hbc");
 
         let file_size = asset.data.len() as i64;
 
