@@ -1,0 +1,146 @@
+# .github/workflows/ota-deploy.yml
+# Copy this to your React Native app repo at .github/workflows/ota-deploy.yml
+
+name: OTA Update
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Channel to publish to'
+        required: false
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+          - canary
+      is_critical:
+        description: 'Mark as critical update (force immediate reload)'
+        required: false
+        default: false
+        type: boolean
+      rollout_percentage:
+        description: 'Rollout percentage (1-100)'
+        required: false
+        default: '100'
+        type: string
+
+env:
+  OTA_SERVER_URL: ${{ vars.OTA_SERVER_URL }}  # e.g. https://ota.example.com
+  OTA_API_KEY: ${{ secrets.OTA_API_KEY }}     # API key from Dashboard > Settings
+  DISPATCH_VERSION: latest                     # or pin to a specific tag, e.g. cli-v0.1.0
+
+jobs:
+  check-native-changes:
+    name: Check for native changes
+    runs-on: ubuntu-latest
+    outputs:
+      native_changed: ${{ steps.check.outputs.native_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect native dependency changes
+        id: check
+        run: |
+          NATIVE_CHANGED=false
+
+          NATIVE_PATTERNS=(
+            "ios/"
+            "android/"
+            "Podfile"
+            "Podfile.lock"
+            "build.gradle"
+            "gradle.properties"
+            "app.json"
+            "app.config.js"
+            "app.config.ts"
+            "expo-env.d.ts"
+          )
+
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+
+          for pattern in "${NATIVE_PATTERNS[@]}"; do
+            if echo "$CHANGED_FILES" | grep -q "^${pattern}"; then
+              echo "Native change detected in: $pattern"
+              NATIVE_CHANGED=true
+              break
+            fi
+          done
+
+          if echo "$CHANGED_FILES" | grep -q "^package.json"; then
+            DEPS_BEFORE=$(git show HEAD~1:package.json | jq -r '.dependencies // {} | keys[]' 2>/dev/null | sort)
+            DEPS_AFTER=$(git show HEAD:package.json | jq -r '.dependencies // {} | keys[]' 2>/dev/null | sort)
+
+            ADDED=$(comm -13 <(echo "$DEPS_BEFORE") <(echo "$DEPS_AFTER"))
+            REMOVED=$(comm -23 <(echo "$DEPS_BEFORE") <(echo "$DEPS_AFTER"))
+
+            if [ -n "$ADDED" ] || [ -n "$REMOVED" ]; then
+              echo "Package dependencies changed:"
+              [ -n "$ADDED" ] && echo "  Added: $ADDED"
+              [ -n "$REMOVED" ] && echo "  Removed: $REMOVED"
+              NATIVE_CHANGED=true
+            fi
+          fi
+
+          echo "native_changed=$NATIVE_CHANGED" >> "$GITHUB_OUTPUT"
+
+  deploy-ota:
+    name: Publish OTA update
+    needs: check-native-changes
+    if: needs.check-native-changes.outputs.native_changed == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Dispatch CLI
+        run: |
+          if [ "$DISPATCH_VERSION" = "latest" ]; then
+            DOWNLOAD_URL="https://github.com/alexmgriffiths/dispatch/releases/latest/download/dispatch-linux-x64"
+          else
+            DOWNLOAD_URL="https://github.com/alexmgriffiths/dispatch/releases/download/${DISPATCH_VERSION}/dispatch-linux-x64"
+          fi
+          curl -sL "$DOWNLOAD_URL" -o /usr/local/bin/dispatch
+          chmod +x /usr/local/bin/dispatch
+
+      - name: Login to Dispatch
+        run: dispatch login --server "$OTA_SERVER_URL" --key "$OTA_API_KEY"
+
+      - name: Publish update
+        run: |
+          ARGS=(
+            --channel "${{ inputs.channel || 'production' }}"
+            --rollout "${{ inputs.rollout_percentage || '100' }}"
+            -m "$(git log -1 --pretty=%s)"
+          )
+
+          if [ "${{ inputs.is_critical }}" = "true" ]; then
+            ARGS+=(--critical)
+          fi
+
+          dispatch publish "${ARGS[@]}"
+
+  warn-native-change:
+    name: Warn - native changes detected
+    needs: check-native-changes
+    if: needs.check-native-changes.outputs.native_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip OTA - native changes require full build
+        run: |
+          echo "::warning::Native dependencies changed — OTA update skipped."
+          echo "Changes to iOS/Android native code, Podfile, build.gradle, or package dependencies"
+          echo "require a full app store build."
+          echo ""
+          echo "After submitting the new binary, future JS-only pushes will resume OTA deploys."

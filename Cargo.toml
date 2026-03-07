@@ -1,0 +1,38 @@
+[workspace]
+members = [".", "crates/dispatch-cli"]
+
+[package]
+name = "dispatch-ota"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.8.8", features = ["multipart"] }
+serde = { version = "1.0.183", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6.8", features = ["cors", "fs", "compression-gzip", "set-header", "trace"] }
+dotenvy = "0.15.7"
+serde_json = "1.0.145"
+chrono = { version = "0.4", features = ["serde"] }
+sqlx = { version = "0.8.6", features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "macros",
+    "uuid",
+    "chrono",
+] }
+aws-config = "1"
+aws-sdk-s3 = "1.125.0"
+sha2 = "0.10"
+md-5 = "0.10"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4", "serde"] }
+rsa = { version = "0.9", features = ["pem", "sha2"] }
+rand = "0.10.0"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+hmac = "0.12"
+hex = "0.4"
+argon2 = "0.5"

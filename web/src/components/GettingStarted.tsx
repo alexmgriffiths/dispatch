@@ -1,0 +1,330 @@
+import { useState } from 'react'
+import { cn } from '@/lib/utils'
+import { Check, Copy, ChevronRight, Smartphone, GitBranch, Zap, Shield, BarChart3, Layers, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+
+interface Props {
+  projectUuid?: string
+  onNavigate: (page: string) => void
+  onDismiss: () => void
+}
+
+export default function GettingStarted({ projectUuid, onNavigate, onDismiss }: Props) {
+  const [openSection, setOpenSection] = useState<string | null>('setup')
+  const [copied, setCopied] = useState<string | null>(null)
+
+  function copyText(text: string, id: string) {
+    navigator.clipboard.writeText(text)
+    setCopied(id)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  function toggle(id: string) {
+    setOpenSection(prev => prev === id ? null : id)
+  }
+
+  return (
+    <>
+      <div className="border-b bg-card px-6 py-5 flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Getting Started</h2>
+          <p className="text-sm text-muted-foreground">Set up OTA updates for your React Native / Expo app</p>
+        </div>
+        <Button variant="ghost" size="sm" className="text-muted-foreground gap-1.5" onClick={onDismiss}>
+          <X className="h-3.5 w-3.5" />
+          Don't show on login
+        </Button>
+      </div>
+
+      <div className="p-6 max-w-3xl space-y-3">
+        {/* Step 1: App Setup */}
+        <Section
+          number={1}
+          title="Configure your app"
+          icon={<Smartphone className="h-4 w-4" />}
+          open={openSection === 'setup'}
+          onToggle={() => toggle('setup')}
+        >
+          <p className="text-sm text-muted-foreground mb-3">
+            Add the update server URL to your <code className="text-xs bg-muted px-1 py-0.5 rounded">app.json</code> and install the expo-updates package.
+            No custom SDK needed — the standard <code className="text-xs bg-muted px-1 py-0.5 rounded">expo-updates</code> client works out of the box.
+          </p>
+
+          <CodeBlock
+            id="app-json"
+            language="json"
+            copied={copied}
+            onCopy={copyText}
+            code={`{
+  "expo": {
+    "updates": {
+      "url": "${window.location.origin}/v1/ota/manifest/${projectUuid || '<project-uuid>'}",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD"
+    },
+    "runtimeVersion": "1.0.0"
+  }
+}`}
+          />
+
+          <CodeBlock
+            id="install"
+            language="bash"
+            copied={copied}
+            onCopy={copyText}
+            code="npx expo install expo-updates"
+          />
+        </Section>
+
+        {/* Step 2: CI/CD */}
+        <Section
+          number={2}
+          title="Set up CI/CD"
+          icon={<Zap className="h-4 w-4" />}
+          open={openSection === 'cicd'}
+          onToggle={() => toggle('cicd')}
+        >
+          <p className="text-sm text-muted-foreground mb-3">
+            Copy the workflow file to your app repo. Every push to <code className="text-xs bg-muted px-1 py-0.5 rounded">main</code> will
+            export your JS bundle, upload it, and publish to production. Native changes are auto-detected and skipped.
+          </p>
+
+          <div className="rounded-lg border bg-muted/30 p-3 space-y-2 mb-3">
+            <p className="text-xs font-semibold">Add to your GitHub repo settings:</p>
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+              <span className="text-muted-foreground">Variable</span>
+              <span><code className="bg-muted px-1 py-0.5 rounded">OTA_SERVER_URL</code> — your server URL (e.g. <code className="bg-muted px-1 py-0.5 rounded">https://ota.example.com/v1/ota</code>)</span>
+              <span className="text-muted-foreground">Secret</span>
+              <span><code className="bg-muted px-1 py-0.5 rounded">OTA_API_KEY</code> — create one in <button className="text-primary hover:underline" onClick={() => onNavigate('settings')}>Settings &gt; API Keys</button></span>
+            </div>
+          </div>
+
+          <CodeBlock
+            id="workflow-path"
+            language="bash"
+            copied={copied}
+            onCopy={copyText}
+            code="cp examples/ota-deploy.yml your-app/.github/workflows/ota-deploy.yml"
+          />
+
+          <p className="text-xs text-muted-foreground mt-2">
+            You can also trigger deploys manually from GitHub Actions with options for channel, rollout %, and critical flag.
+          </p>
+        </Section>
+
+        {/* Step 3: Channels & Branches */}
+        <Section
+          number={3}
+          title="Channels & branches"
+          icon={<GitBranch className="h-4 w-4" />}
+          open={openSection === 'channels'}
+          onToggle={() => toggle('channels')}
+        >
+          <p className="text-sm text-muted-foreground mb-3">
+            <strong>Channels</strong> are what devices connect to (production, staging, canary).
+            <strong> Branches</strong> are where updates live. A channel points to a branch.
+          </p>
+
+          <div className="space-y-2 mb-3">
+            <UseCaseRow
+              title="Instant promotion"
+              description="Point the production channel from one branch to another. All devices instantly get the new branch's latest update."
+            />
+            <UseCaseRow
+              title="Instant rollback"
+              description="Switch the channel pointer back. No new build needed."
+            />
+            <UseCaseRow
+              title="Gradual rollout"
+              description="Set a rollout branch at 10%. That percentage of devices get the new branch, the rest stay on the current one. Ramp up as you gain confidence."
+            />
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Configure in <button className="text-primary hover:underline" onClick={() => onNavigate('settings')}>Settings &gt; Branches & Channels</button>.
+            Rollout uses deterministic device bucketing — the same device always gets the same result.
+          </p>
+        </Section>
+
+        {/* Step 4: Rollout & Rollback */}
+        <Section
+          number={4}
+          title="Rollout & rollback"
+          icon={<Layers className="h-4 w-4" />}
+          open={openSection === 'rollout'}
+          onToggle={() => toggle('rollout')}
+        >
+          <p className="text-sm text-muted-foreground mb-3">
+            Two ways to control who gets what:
+          </p>
+
+          <div className="space-y-2 mb-3">
+            <UseCaseRow
+              title="Per-update rollout"
+              description="Drag the rollout slider on any release to control what % of devices receive that specific update. Start at 10%, ramp to 100%."
+            />
+            <UseCaseRow
+              title="Per-channel rollout"
+              description="Set a rollout branch on a channel to split traffic between two branches. Affects all updates on those branches."
+            />
+            <UseCaseRow
+              title="Critical updates"
+              description="Toggle 'Critical' to force an immediate reload instead of waiting for the next app launch. Use for security fixes."
+            />
+            <UseCaseRow
+              title="Republish"
+              description="Clone any update to new channels from the update detail drawer. Same assets, new UUID — no re-upload needed."
+            />
+            <UseCaseRow
+              title="Rollback to specific update"
+              description="From the update detail drawer, click 'Rollback to this' to create a rollback pointing devices back to a known-good update."
+            />
+            <UseCaseRow
+              title="Minimum runtime version"
+              description="Set a minimum version per channel in Settings. Devices below this threshold are told to update from the app store instead of receiving OTA updates."
+            />
+          </div>
+
+          <Button variant="outline" size="sm" onClick={() => onNavigate('updates')}>
+            Go to Releases
+          </Button>
+        </Section>
+
+        {/* Step 5: Monitor */}
+        <Section
+          number={5}
+          title="Monitor adoption"
+          icon={<BarChart3 className="h-4 w-4" />}
+          open={openSection === 'monitor'}
+          onToggle={() => toggle('monitor')}
+        >
+          <p className="text-sm text-muted-foreground mb-3">
+            The Adoption dashboard shows download trends and which update each device is currently running.
+            Use it to verify rollouts are progressing and catch issues early.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => onNavigate('adoption')}>
+            Go to Adoption
+          </Button>
+        </Section>
+
+        {/* Step 6: Code Signing */}
+        <Section
+          number={6}
+          title="Code signing (optional)"
+          icon={<Shield className="h-4 w-4" />}
+          open={openSection === 'signing'}
+          onToggle={() => toggle('signing')}
+        >
+          <p className="text-sm text-muted-foreground mb-3">
+            Sign manifests so devices verify updates came from you. Set <code className="text-xs bg-muted px-1 py-0.5 rounded">PRIVATE_KEY_PATH</code> on the server
+            and configure the public key in your app.
+          </p>
+
+          <CodeBlock
+            id="keygen"
+            language="bash"
+            copied={copied}
+            onCopy={copyText}
+            code={`# Generate key pair
+openssl genpkey -algorithm RSA -out private-key.pem -pkeyopt rsa_keygen_bits:2048
+openssl rsa -in private-key.pem -pubout -out public-key.pem`}
+          />
+
+          <p className="text-xs text-muted-foreground mt-2">
+            Set <code className="text-xs bg-muted px-1 py-0.5 rounded">PRIVATE_KEY_PATH=./private-key.pem</code> in your server environment, then add <code className="text-xs bg-muted px-1 py-0.5 rounded">updates.codeSigningCertificate</code> to your app.json pointing to the public key.
+          </p>
+        </Section>
+
+        {/* Runtime version callout */}
+        <div className="rounded-xl border bg-card p-4 mt-6">
+          <h4 className="text-sm font-semibold mb-1">Runtime version</h4>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Devices only receive updates matching their runtime version. Bump it when native dependencies change
+            (new packages, Expo SDK upgrade, iOS/Android folder changes). If you use fingerprint-based versioning,
+            the CI workflow handles this automatically.
+          </p>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function Section({
+  number,
+  title,
+  icon,
+  open,
+  onToggle,
+  children,
+}: {
+  number: number
+  title: string
+  icon: React.ReactNode
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-3 w-full px-4 py-3 text-left hover:bg-accent/30 transition-colors cursor-pointer"
+      >
+        <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold shrink-0">
+          {number}
+        </span>
+        <span className="flex items-center gap-2 flex-1 text-sm font-semibold">
+          {icon}
+          {title}
+        </span>
+        <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform', open && 'rotate-90')} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4 pt-1 border-t">
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CodeBlock({
+  id,
+  code,
+  language,
+  copied,
+  onCopy,
+}: {
+  id: string
+  code: string
+  language: string
+  copied: string | null
+  onCopy: (text: string, id: string) => void
+}) {
+  return (
+    <div className="relative group rounded-lg bg-muted border">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b">
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{language}</span>
+        <button
+          onClick={() => onCopy(code, id)}
+          className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+        >
+          {copied === id ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      <pre className="p-3 text-xs overflow-x-auto"><code>{code}</code></pre>
+    </div>
+  )
+}
+
+function UseCaseRow({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="flex gap-2 text-sm">
+      <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+      <div>
+        <span className="font-medium">{title}</span>
+        <span className="text-muted-foreground"> — {description}</span>
+      </div>
+    </div>
+  )
+}
