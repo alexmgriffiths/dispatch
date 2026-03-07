@@ -69,21 +69,6 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
         .cloned()
         .unwrap_or_else(|| app_json.clone());
 
-    // Determine runtime version
-    let (runtime_version, fingerprint) = if let Some(ref rv) = opts.runtime_version {
-        println!("{} Using provided runtime version: {}", style("*").cyan(), style(rv).dim());
-        (rv.clone(), None)
-    } else {
-        // Ensure native dirs exist so fingerprint matches what expo run:ios baked in
-        ensure_prebuild(&cwd)?;
-        println!("{} Computing runtime fingerprint...", style("*").cyan());
-        let fp = compute_fingerprint(&cwd)?;
-        println!("  Fingerprint: {}", style(&fp).dim());
-        let rv = get_runtime_version(&expo_config, &fp);
-        println!("  Runtime version: {}", style(&rv).dim());
-        (rv, Some(fp))
-    };
-
     let dist_dir = cwd.join("dist");
 
     // Get git info
@@ -99,6 +84,19 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
         Some("ios") => vec!["ios"],
         Some("android") => vec!["android"],
         _ => vec!["ios", "android"],
+    };
+
+    // Determine runtime version (using first platform for fingerprint computation)
+    let (runtime_version, fingerprint) = if let Some(ref rv) = opts.runtime_version {
+        println!("{} Using provided runtime version: {}", style("*").cyan(), style(rv).dim());
+        (rv.clone(), None)
+    } else {
+        println!("{} Computing runtime fingerprint...", style("*").cyan());
+        let fp = compute_fingerprint(&cwd, platforms[0])?;
+        println!("  Fingerprint: {}", style(&fp).dim());
+        let rv = get_runtime_version(&expo_config, &fp);
+        println!("  Runtime version: {}", style(&rv).dim());
+        (rv, Some(fp))
     };
 
     println!();
@@ -257,48 +255,55 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
     Ok(())
 }
 
-fn ensure_prebuild(cwd: &Path) -> Result<()> {
-    let ios_dir = cwd.join("ios");
-    let android_dir = cwd.join("android");
+fn compute_fingerprint(cwd: &Path, platform: &str) -> Result<String> {
+    // Use the expo-updates fingerprint computation which handles managed vs bare
+    // workflow detection and matches what expo run:ios bakes into the binary.
+    // Falls back to the @expo/fingerprint CLI if expo-updates is not installed.
+    let script = format!(
+        r#"
+        const {{ createFingerprintAsync }} = require('expo/fingerprint');
+        const path = require('path');
 
-    if ios_dir.exists() && android_dir.exists() {
-        return Ok(());
-    }
+        async function run() {{
+            // Detect workflow: if native marker files are gitignored, it's managed
+            const platform = '{platform}';
+            let ignorePaths = [];
+            try {{
+                const {{ resolveWorkflowAsync }} = require(
+                    path.join(process.cwd(), 'node_modules/expo-updates/utils/build/workflow')
+                );
+                const workflow = await resolveWorkflowAsync(process.cwd(), platform);
+                if (workflow === 'managed') {{
+                    ignorePaths = ['android/**/*', 'ios/**/*'];
+                }}
+            }} catch (e) {{
+                // expo-updates not installed or old version, try detecting manually
+                const fs = require('fs');
+                const iosIgnored = fs.existsSync('.gitignore') &&
+                    fs.readFileSync('.gitignore', 'utf8').split('\\n').some(l => l.trim() === '/ios' || l.trim() === 'ios/');
+                const androidIgnored = fs.existsSync('.gitignore') &&
+                    fs.readFileSync('.gitignore', 'utf8').split('\\n').some(l => l.trim() === '/android' || l.trim() === 'android/');
+                if (iosIgnored && androidIgnored) {{
+                    ignorePaths = ['android/**/*', 'ios/**/*'];
+                }}
+            }}
 
-    println!(
-        "{} Running expo prebuild for accurate fingerprint...",
-        style("*").cyan()
+            const result = await createFingerprintAsync(process.cwd(), {{
+                platforms: [platform],
+                ignorePaths,
+            }});
+            console.log(JSON.stringify({{ hash: result.hash }}));
+        }}
+        run().catch(e => {{ console.error(e.message); process.exit(1); }});
+        "#,
+        platform = platform
     );
-    let status = Command::new("npx")
-        .args(["expo", "prebuild", "--no-install"])
+
+    let output = Command::new("node")
+        .args(["-e", &script])
         .current_dir(cwd)
-        .status()
-        .context("Failed to run expo prebuild")?;
-
-    if !status.success() {
-        bail!("expo prebuild failed. The ios/ and android/ directories are needed for accurate fingerprint computation.");
-    }
-
-    Ok(())
-}
-
-fn compute_fingerprint(cwd: &Path) -> Result<String> {
-    // Try the project-local @expo/fingerprint first (matches what expo run:ios uses),
-    // then fall back to npx
-    let local_bin = cwd.join("node_modules/.bin/expo-fingerprint");
-    let output = if local_bin.exists() {
-        Command::new(&local_bin)
-            .arg(".")
-            .current_dir(cwd)
-            .output()
-            .context("Failed to run local @expo/fingerprint")?
-    } else {
-        Command::new("npx")
-            .args(["@expo/fingerprint", "."])
-            .current_dir(cwd)
-            .output()
-            .context("Failed to run @expo/fingerprint")?
-    };
+        .output()
+        .context("Failed to compute fingerprint")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -306,14 +311,12 @@ fn compute_fingerprint(cwd: &Path) -> Result<String> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // The output is a JSON object with a "hash" field
     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(stdout.trim()) {
         if let Some(hash) = parsed.get("hash").and_then(|h| h.as_str()) {
             return Ok(hash.to_string());
         }
     }
-    // Fallback: use the full output trimmed
-    Ok(stdout.trim().to_string())
+    bail!("Could not parse fingerprint output: {stdout}");
 }
 
 fn get_runtime_version(expo_config: &serde_json::Value, fingerprint: &str) -> String {
