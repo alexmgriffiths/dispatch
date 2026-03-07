@@ -32,10 +32,9 @@ pub struct BuildResponse {
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 pub struct PublishResponse {
+    pub update_id: i64,
     pub update_uuid: String,
-    pub channel: String,
-    pub platform: String,
-    pub runtime_version: String,
+    pub group_id: String,
 }
 
 #[derive(Debug, Serialize)]
