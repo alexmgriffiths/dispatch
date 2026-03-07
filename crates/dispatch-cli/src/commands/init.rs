@@ -118,22 +118,21 @@ fn patch_app_json(path: &Path, server_url: &str, project_uuid: &str) -> Result<(
     let server_url = server_url.trim_end_matches('/');
     let manifest_url = format!("{server_url}/v1/ota/manifest/{project_uuid}");
 
-    // Set updates config
-    let updates = serde_json::json!({
-        "url": manifest_url,
-        "enabled": true,
-        "checkAutomatically": "ON_LOAD"
-    });
-    target.as_object_mut()
-        .unwrap()
-        .insert("updates".to_string(), updates);
+    // Merge updates config (preserve existing keys like fallbackToCacheTimeout)
+    let obj = target.as_object_mut().unwrap();
+    let updates = obj
+        .entry("updates")
+        .or_insert_with(|| serde_json::json!({}));
+    if let Some(updates_obj) = updates.as_object_mut() {
+        updates_obj.insert("url".to_string(), serde_json::json!(manifest_url));
+        updates_obj.insert("enabled".to_string(), serde_json::json!(true));
+        updates_obj.insert("checkAutomatically".to_string(), serde_json::json!("ON_LOAD"));
+    }
 
     // Set runtimeVersion to fingerprint policy
-    target.as_object_mut()
-        .unwrap()
-        .insert("runtimeVersion".to_string(), serde_json::json!({
-            "policy": "fingerprint"
-        }));
+    obj.insert("runtimeVersion".to_string(), serde_json::json!({
+        "policy": "fingerprint"
+    }));
 
     let output = serde_json::to_string_pretty(&root)?;
     std::fs::write(path, output + "\n")?;
