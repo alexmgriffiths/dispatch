@@ -41,6 +41,9 @@ enum Commands {
         /// Force immediate reload on devices
         #[arg(long, default_value = "false")]
         critical: bool,
+        /// Upload build without publishing (publish later from the dashboard)
+        #[arg(long, default_value = "false")]
+        no_publish: bool,
     },
 }
 
@@ -57,6 +60,7 @@ async fn main() {
             platform,
             rollout,
             critical,
+            no_publish,
         } => {
             commands::publish::run(commands::publish::PublishOptions {
                 channel,
@@ -64,6 +68,7 @@ async fn main() {
                 platform,
                 rollout,
                 critical,
+                no_publish,
             })
             .await
         }

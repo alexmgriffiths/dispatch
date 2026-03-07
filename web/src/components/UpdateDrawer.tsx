@@ -388,9 +388,9 @@ export default function UpdateDrawer({ update, onClose, onRefresh }: Props) {
 
 function Field({ label, value, mono, children }: { label: string; value?: string; mono?: boolean; children?: React.ReactNode }) {
   return (
-    <div className="space-y-0.5">
+    <div className="min-w-0 space-y-0.5">
       <div className="text-xs text-muted-foreground">{label}</div>
-      {children ?? <div className={`text-sm ${mono ? 'font-mono text-xs break-all' : ''}`}>{value}</div>}
+      {children ?? <div className={`text-sm truncate ${mono ? 'font-mono text-xs' : ''}`} title={value}>{value}</div>}
     </div>
   )
 }

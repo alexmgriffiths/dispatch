@@ -14,6 +14,7 @@ pub struct PublishOptions {
     pub platform: Option<String>,
     pub rollout: i32,
     pub critical: bool,
+    pub no_publish: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,12 +95,20 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
     };
 
     println!();
-    println!(
-        "{} Publishing to {} for {}...",
-        style("*").cyan(),
-        style(&opts.channel).bold(),
-        style(platforms.join(", ")).bold()
-    );
+    if opts.no_publish {
+        println!(
+            "{} Uploading for {}...",
+            style("*").cyan(),
+            style(platforms.join(", ")).bold()
+        );
+    } else {
+        println!(
+            "{} Publishing to {} for {}...",
+            style("*").cyan(),
+            style(&opts.channel).bold(),
+            style(platforms.join(", ")).bold()
+        );
+    }
 
     // Generate a shared group_id so both platforms are linked as one release
     let group_id = uuid::Uuid::new_v4().to_string();
@@ -187,38 +196,55 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
 
         pb.set_position(70);
 
-        // Publish build with shared group_id
-        let publish_resp = client
-            .publish_build(
-                build.id,
-                &PublishBuildRequest {
-                    channel: opts.channel.clone(),
-                    branch_name: None,
-                    rollout_percentage: opts.rollout,
-                    is_critical: opts.critical,
-                    release_message: message.clone(),
-                    group_id: Some(group_id.clone()),
-                },
-            )
-            .await?;
+        if opts.no_publish {
+            pb.set_position(100);
+            pb.finish_with_message(format!(
+                "{} files, {} — uploaded (build #{})",
+                assets.len(),
+                format_bytes(total_size),
+                build.id
+            ));
+        } else {
+            // Publish build with shared group_id
+            let publish_resp = client
+                .publish_build(
+                    build.id,
+                    &PublishBuildRequest {
+                        channel: opts.channel.clone(),
+                        branch_name: None,
+                        rollout_percentage: opts.rollout,
+                        is_critical: opts.critical,
+                        release_message: message.clone(),
+                        group_id: Some(group_id.clone()),
+                    },
+                )
+                .await?;
 
-        pb.set_position(100);
-        pb.finish_with_message(format!(
-            "{} files, {} — {}",
-            assets.len(),
-            format_bytes(total_size),
-            style(&publish_resp.update_uuid).dim()
-        ));
+            pb.set_position(100);
+            pb.finish_with_message(format!(
+                "{} files, {} — {}",
+                assets.len(),
+                format_bytes(total_size),
+                style(&publish_resp.update_uuid).dim()
+            ));
+        }
     }
 
     println!();
-    println!("{} Published successfully!", style("✓").green());
-    println!();
-    println!("  Channel:   {}", style(&opts.channel).bold());
-    println!("  Runtime:   {}", style(&runtime_version).dim());
-    println!("  Rollout:   {}%", opts.rollout);
-    if opts.critical {
-        println!("  Critical:  {}", style("yes").yellow());
+    if opts.no_publish {
+        println!("{} Uploaded successfully!", style("✓").green());
+        println!();
+        println!("  Runtime:   {}", style(&runtime_version).dim());
+        println!("  Status:    {}", style("pending — publish from dashboard").yellow());
+    } else {
+        println!("{} Published successfully!", style("✓").green());
+        println!();
+        println!("  Channel:   {}", style(&opts.channel).bold());
+        println!("  Runtime:   {}", style(&runtime_version).dim());
+        println!("  Rollout:   {}%", opts.rollout);
+        if opts.critical {
+            println!("  Critical:  {}", style("yes").yellow());
+        }
     }
 
     Ok(())
