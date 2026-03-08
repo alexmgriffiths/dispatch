@@ -3,6 +3,7 @@ import { listBuilds } from '../api/client'
 import type { BuildRecord } from '../api/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { PlatformBadge } from '@/components/ui/platform-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { GitBranch } from 'lucide-react'
@@ -101,7 +102,7 @@ export default function BuildsList({ onPublish }: Props) {
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="font-semibold text-sm truncate max-w-[120px]">{b.runtimeVersion}</span>
-                    <Badge variant={b.platform as 'ios' | 'android'}>{b.platform}</Badge>
+                    <PlatformBadge platform={b.platform} />
                     {b.gitBranch && (
                       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <GitBranch className="h-3 w-3" />

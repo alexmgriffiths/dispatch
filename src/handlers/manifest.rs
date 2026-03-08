@@ -91,6 +91,12 @@ pub async fn handle_get_manifest(
         .get("expo-device-id")
         .and_then(|v| v.to_str().ok());
 
+    // User ID for user-level targeting
+    let user_id = headers
+        .get("expo-user-id")
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| !v.is_empty() && *v != "none");
+
     // Derive the server's own base URL for asset proxying
     let asset_base_url = {
         let scheme = headers
@@ -129,8 +135,24 @@ pub async fn handle_get_manifest(
         }
     }
 
+    // User-level targeting: check if this user has a branch override
+    let user_override_branch = if let Some(uid) = user_id {
+        sqlx::query_scalar::<_, String>(
+            "SELECT branch_name FROM user_overrides WHERE project_id = $1 AND user_id = $2",
+        )
+        .bind(project_id)
+        .bind(uid)
+        .fetch_optional(&state.db)
+        .await?
+    } else {
+        None
+    };
+
     // Determine which branch to serve from
-    let target_branch = if let Some(ref ch) = channel_config {
+    let target_branch = if let Some(ref override_branch) = user_override_branch {
+        // User override takes priority over channel/rollout resolution
+        override_branch.as_str()
+    } else if let Some(ref ch) = channel_config {
         // Branch-based rollout: if rollout_branch_name is set and rollout_percentage > 0,
         // use deterministic bucketing to decide which branch to serve
         if let Some(ref rollout_branch) = ch.rollout_branch_name {
@@ -247,16 +269,11 @@ pub async fn handle_get_manifest(
     }
 
     // Check if client already has this update
-    println!("[DEBUG] Manifest request: platform={platform}, runtime={runtime_version}, channel={channel}, branch={target_branch}");
-    println!("[DEBUG] Latest update: id={}, uuid={}, created_at={}", update.id, update.update_uuid, update.created_at);
-    println!("[DEBUG] Client current_update_id: {:?}", current_update_id);
     if protocol_version == 1 {
         if let Some(ref current_id) = current_update_id {
             if current_id == &update.update_uuid {
-                println!("[DEBUG] Client already has latest, returning no-update");
                 return build_no_update_response(&state, protocol_version, expect_signature);
             }
-            println!("[DEBUG] Client has different update, serving new one");
         }
     }
 
@@ -371,7 +388,7 @@ async fn build_update_response(
         runtime_version: runtime_version.to_string(),
         assets: asset_metadatas,
         launch_asset: launch_asset_metadata,
-        metadata: serde_json::json!({}),
+        metadata: serde_json::json!({ "isCritical": update.is_critical }),
         extra: ManifestExtra {
             expo_client: update.expo_config.clone(),
         },

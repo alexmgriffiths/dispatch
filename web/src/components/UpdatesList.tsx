@@ -4,6 +4,7 @@ import type { UpdateRecord, UpdateListParams } from '../api/client'
 import UpdateDrawer from './UpdateDrawer'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { PlatformBadge } from '@/components/ui/platform-badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -207,7 +208,7 @@ export default function UpdatesList({ onPublish }: Props) {
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="font-semibold text-sm">v{primary.runtimeVersion}</span>
                 {platforms.map(p => (
-                  <Badge key={p} variant={p as 'ios' | 'android'}>{p}</Badge>
+                  <PlatformBadge key={p} platform={p} />
                 ))}
                 <Badge variant={primary.channel as 'production' | 'staging' | 'canary'}>{primary.channel}</Badge>
                 {primary.isRollback && <Badge variant="rollback">rollback</Badge>}
@@ -428,7 +429,7 @@ function PlatformRow({
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {!hidePlatform && <Badge variant={u.platform as 'ios' | 'android'} className="text-[10px]">{u.platform}</Badge>}
+          {!hidePlatform && <PlatformBadge platform={u.platform} className="text-[10px]" />}
           <span className="font-mono truncate text-[11px]">{u.updateUuid}</span>
           <span>{timeAgo(u.createdAt)}</span>
           <span>{u.assetCount} asset{u.assetCount !== 1 ? 's' : ''}{u.totalSize > 0 ? ` (${formatSize(u.totalSize)})` : ''}</span>

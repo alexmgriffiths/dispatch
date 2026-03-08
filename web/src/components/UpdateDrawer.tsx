@@ -9,6 +9,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
+import { PlatformBadge } from '@/components/ui/platform-badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -184,7 +185,7 @@ export default function UpdateDrawer({ update, onClose, onRefresh }: Props) {
                   <Field label="Fingerprint" value={update.runtimeFingerprint} mono />
                 )}
                 <Field label="Platform">
-                  <Badge variant={update.platform as 'ios' | 'android'}>{update.platform}</Badge>
+                  <PlatformBadge platform={update.platform} />
                 </Field>
                 <Field label="Channel">
                   <Badge variant={update.channel as 'production' | 'staging' | 'canary'}>{update.channel}</Badge>

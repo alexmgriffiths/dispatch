@@ -35,6 +35,9 @@ use crate::handlers::settings::{
     handle_create_webhook, handle_delete_webhook, handle_gc_preview, handle_gc_run,
     handle_list_webhook_deliveries, handle_list_webhooks, handle_patch_webhook,
 };
+use crate::handlers::user_overrides::{
+    handle_create_user_override, handle_delete_user_override, handle_list_user_overrides,
+};
 use crate::handlers::upload::{
     handle_create_update, handle_delete_update, handle_list_updates, handle_patch_update,
     handle_presign_upload, handle_republish_update, handle_upload_asset,
@@ -120,7 +123,12 @@ pub fn create_router(state: AppState) -> Router {
         .route("/webhooks/{id}/deliveries", get(handle_list_webhook_deliveries))
         .route("/gc", get(handle_gc_preview).post(handle_gc_run))
         .route("/projects", get(handle_list_projects).post(handle_create_project))
-        .route("/projects/{slug}", delete(handle_delete_project));
+        .route("/projects/{slug}", delete(handle_delete_project))
+        .route(
+            "/user-overrides",
+            get(handle_list_user_overrides).post(handle_create_user_override),
+        )
+        .route("/user-overrides/{id}", delete(handle_delete_user_override));
 
     let compressed_routes = Router::new()
         .merge(public_routes)

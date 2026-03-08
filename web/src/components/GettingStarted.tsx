@@ -2,6 +2,118 @@ import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Check, Copy, ChevronRight, Smartphone, GitBranch, Zap, Shield, BarChart3, Layers, X, Terminal, Key } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { HighlightedCode } from '@/components/ui/highlighted-code'
+
+const OTA_HOOK_DEVICE_ONLY = `import { useEffect } from "react"
+import * as Updates from "expo-updates"
+import * as SecureStore from "expo-secure-store"
+import { randomUUID } from "expo-crypto" // or any UUID generator
+
+const DEVICE_ID_KEY = "ota_device_id"
+
+async function getOrCreateDeviceId(): Promise<string> {
+  let id = await SecureStore.getItemAsync(DEVICE_ID_KEY)
+  if (!id) {
+    id = randomUUID()
+    await SecureStore.setItemAsync(DEVICE_ID_KEY, id)
+  }
+  return id
+}
+
+export function useOTAUpdates() {
+  useEffect(() => {
+    if (__DEV__) return
+
+    async function checkForUpdate() {
+      try {
+        const deviceId = await getOrCreateDeviceId()
+
+        // Set device header for rollout bucketing
+        try {
+          Updates.setUpdateRequestHeadersOverride({
+            "expo-device-id": deviceId,
+          })
+        } catch {
+          // Requires native config with EXUpdatesRequestHeaders — skip silently
+        }
+
+        const check = await Updates.checkForUpdateAsync()
+        if (!check.isAvailable) return
+
+        const result = await Updates.fetchUpdateAsync()
+        if (!result.isNew) return
+
+        // Critical updates reload immediately; others apply on next launch
+        const manifest = (check.manifest ?? result.manifest) as any
+        if (manifest?.metadata?.isCritical === true) {
+          await Updates.reloadAsync()
+        }
+      } catch (err: any) {
+        console.warn("[OTA]", err.message)
+      }
+    }
+
+    checkForUpdate()
+  }, [])
+}`
+
+const OTA_HOOK_WITH_USER = `import { useEffect } from "react"
+import * as Updates from "expo-updates"
+import * as SecureStore from "expo-secure-store"
+import { randomUUID } from "expo-crypto" // or any UUID generator
+import { useAuth } from "@/contexts/AuthContext" // replace with your auth hook
+
+const DEVICE_ID_KEY = "ota_device_id"
+
+async function getOrCreateDeviceId(): Promise<string> {
+  let id = await SecureStore.getItemAsync(DEVICE_ID_KEY)
+  if (!id) {
+    id = randomUUID()
+    await SecureStore.setItemAsync(DEVICE_ID_KEY, id)
+  }
+  return id
+}
+
+export function useOTAUpdates() {
+  const { userId } = useAuth()
+
+  useEffect(() => {
+    if (__DEV__) return
+
+    async function checkForUpdate() {
+      try {
+        const deviceId = await getOrCreateDeviceId()
+
+        // Set device & user headers for rollout bucketing
+        try {
+          Updates.setUpdateRequestHeadersOverride({
+            "expo-device-id": deviceId,
+            "expo-user-id": userId ?? "none",
+          })
+        } catch {
+          // Requires native config with EXUpdatesRequestHeaders — skip silently
+        }
+
+        const check = await Updates.checkForUpdateAsync()
+        if (!check.isAvailable) return
+
+        const result = await Updates.fetchUpdateAsync()
+        if (!result.isNew) return
+
+        // Critical updates reload immediately; others apply on next launch
+        const manifest = (check.manifest ?? result.manifest) as any
+        if (manifest?.metadata?.isCritical === true) {
+          await Updates.reloadAsync()
+        }
+      } catch (err: any) {
+        console.warn("[OTA]", err.message)
+      }
+    }
+
+    checkForUpdate()
+  }, [])
+}`
 
 interface Props {
   projectUuid?: string
@@ -13,6 +125,8 @@ export default function GettingStarted({ projectUuid, onNavigate, onDismiss }: P
   const [openSection, setOpenSection] = useState<string | null>('apikey')
   const [copied, setCopied] = useState<string | null>(null)
   const [setupTab, setSetupTab] = useState<'cli' | 'manual'>('cli')
+  const [showHookModal, setShowHookModal] = useState(false)
+  const [hookVariant, setHookVariant] = useState<'device' | 'user'>('device')
 
   function copyText(text: string, id: string) {
     navigator.clipboard.writeText(text)
@@ -116,8 +230,9 @@ export default function GettingStarted({ projectUuid, onNavigate, onDismiss }: P
               />
 
               <p className="text-xs text-muted-foreground">
-                <code className="text-xs bg-muted px-1 py-0.5 rounded">dispatch init</code> will prompt you to select a project, install <code className="text-xs bg-muted px-1 py-0.5 rounded">expo-updates</code>, and patch your <code className="text-xs bg-muted px-1 py-0.5 rounded">app.json</code> with the correct manifest URL and fingerprint-based versioning.
+                <code className="text-xs bg-muted px-1 py-0.5 rounded">dispatch init</code> will prompt you to select a project, install <code className="text-xs bg-muted px-1 py-0.5 rounded">expo-updates</code>, patch your <code className="text-xs bg-muted px-1 py-0.5 rounded">app.json</code>, and configure <code className="text-xs bg-muted px-1 py-0.5 rounded">expo-device-id</code> and <code className="text-xs bg-muted px-1 py-0.5 rounded">expo-user-id</code> headers for rollout bucketing and user targeting.
               </p>
+
             </div>
           ) : (
             <div className="space-y-3">
@@ -150,8 +265,60 @@ export default function GettingStarted({ projectUuid, onNavigate, onDismiss }: P
                 onCopy={copyText}
                 code="npx expo install expo-updates"
               />
+
+              <p className="text-xs font-semibold mt-4 mb-2">Device &amp; user tracking for rollouts</p>
+              <p className="text-sm text-muted-foreground mb-2">
+                Rollout bucketing requires a stable <code className="text-xs bg-muted px-1 py-0.5 rounded">expo-device-id</code> header. You can also send <code className="text-xs bg-muted px-1 py-0.5 rounded">expo-user-id</code> for user-level targeting. Both must be registered in your iOS native config — adding <code className="text-xs bg-muted px-1 py-0.5 rounded">requestHeaders</code> to <code className="text-xs bg-muted px-1 py-0.5 rounded">app.json</code> is <strong>not enough</strong>, Expo's prebuild won't sync it to <code className="text-xs bg-muted px-1 py-0.5 rounded">Expo.plist</code>.
+              </p>
+
+              <CodeBlock
+                id="expo-plist-manual"
+                language="xml"
+                copied={copied}
+                onCopy={copyText}
+                code={`<!-- ios/<YourApp>/Supporting/Expo.plist -->
+<key>EXUpdatesRequestHeaders</key>
+<dict>
+  <key>expo-device-id</key>
+  <string>none</string>
+  <key>expo-user-id</key>
+  <string>none</string>
+</dict>`}
+              />
+
+              <p className="text-xs text-muted-foreground mt-2 mb-2">
+                Then set the header at runtime before the first update check:
+              </p>
+
+              <CodeBlock
+                id="device-id-js-manual"
+                language="typescript"
+                copied={copied}
+                onCopy={copyText}
+                code={`import * as Updates from 'expo-updates';
+
+const deviceId = await getOrCreateDeviceId();
+Updates.setUpdateRequestHeadersOverride({
+  'expo-device-id': deviceId,
+  'expo-user-id': currentUser?.id ?? 'anonymous',
+});`}
+              />
+
+              <p className="text-xs text-muted-foreground mt-2">
+                Without the <code className="text-xs bg-muted px-1 py-0.5 rounded">Expo.plist</code> placeholder, <code className="text-xs bg-muted px-1 py-0.5 rounded">setUpdateRequestHeadersOverride()</code> will throw <code className="text-xs bg-muted px-1 py-0.5 rounded">InvalidRequestHeadersOverrideException</code>.
+              </p>
+
             </div>
           )}
+
+          <div className="mt-4 pt-3 border-t">
+            <p className="text-xs text-muted-foreground mb-2">
+              You'll need a React hook to check for updates and set the device/user headers at runtime.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => setShowHookModal(true)}>
+              View sample hook
+            </Button>
+          </div>
         </Section>
 
         {/* Step 3: Publish */}
@@ -331,7 +498,54 @@ openssl rsa -in private-key.pem -pubout -out public-key.pem`}
             the CI workflow handles this automatically.
           </p>
         </div>
+
       </div>
+
+      <Dialog open={showHookModal} onOpenChange={setShowHookModal}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>OTA Update Hook</DialogTitle>
+            <DialogDescription>
+              Sample React hook that checks for updates on mount, handles critical reloads, and sends tracking headers for rollout bucketing. Adapt to fit your app.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex gap-1 rounded-lg bg-muted p-1">
+            <button
+              onClick={() => setHookVariant('device')}
+              className={cn(
+                'flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                hookVariant === 'device' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              Device only
+            </button>
+            <button
+              onClick={() => setHookVariant('user')}
+              className={cn(
+                'flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                hookVariant === 'user' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              With user targeting
+            </button>
+          </div>
+
+          {hookVariant === 'user' && (
+            <p className="text-xs text-muted-foreground -mb-1">
+              This sample uses a <code className="text-xs bg-muted px-1 py-0.5 rounded">useAuth()</code> hook to get the current user ID — replace this with your own authentication context.
+            </p>
+          )}
+
+          <HighlightedCode
+            id={`ota-hook-${hookVariant}`}
+            code={hookVariant === 'device' ? OTA_HOOK_DEVICE_ONLY : OTA_HOOK_WITH_USER}
+            language="typescript"
+            copied={copied}
+            onCopy={copyText}
+          />
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

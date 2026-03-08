@@ -29,8 +29,8 @@ on:
         type: string
 
 env:
-  OTA_SERVER_URL: ${{ vars.OTA_SERVER_URL }}  # e.g. https://ota.example.com
-  OTA_API_KEY: ${{ secrets.OTA_API_KEY }}     # API key from Dashboard > Settings
+  DISPATCH_SERVER: ${{ vars.DISPATCH_SERVER }}  # e.g. https://ota.example.com
+  DISPATCH_API_KEY: ${{ secrets.DISPATCH_API_KEY }}  # API key from Dashboard > Settings
   DISPATCH_VERSION: latest                     # or pin to a specific tag, e.g. cli-v0.1.0
 
 jobs:
@@ -115,7 +115,7 @@ jobs:
           chmod +x /usr/local/bin/dispatch
 
       - name: Login to Dispatch
-        run: dispatch login --server "$OTA_SERVER_URL" --key "$OTA_API_KEY"
+        run: dispatch login --server "$DISPATCH_SERVER" --key "$DISPATCH_API_KEY"
 
       - name: Publish update
         run: |

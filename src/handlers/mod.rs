@@ -9,4 +9,5 @@ pub mod projects;
 pub mod rollback;
 pub mod settings;
 pub mod upload;
+pub mod user_overrides;
 pub mod webhooks;

@@ -116,8 +116,8 @@ pub async fn handle_adoption_timeseries(
     let days = query.days.unwrap_or(30).min(90).max(1);
     let bucket = query.bucket.as_deref().unwrap_or("day");
     let interval = match bucket {
-        "hour" => "1 hour",
-        _ => "1 day",
+        "hour" => "hour",
+        _ => "day",
     };
 
     let timeseries = if let Some(uid) = query.update_id {
@@ -130,12 +130,13 @@ pub async fn handle_adoption_timeseries(
              JOIN updates u ON u.id = ua.update_id
              WHERE ua.update_id = $1
                AND u.project_id = $2
-               AND ua.created_at >= NOW() - INTERVAL '{days} days'
+               AND ua.created_at >= NOW() - make_interval(days => $3)
              GROUP BY bucket_time, ua.update_id
              ORDER BY bucket_time ASC"
         ))
         .bind(uid)
         .bind(project_id)
+        .bind(days)
         .fetch_all(&state.db)
         .await?
     } else {
@@ -147,11 +148,12 @@ pub async fn handle_adoption_timeseries(
              FROM update_analytics ua
              JOIN updates u ON u.id = ua.update_id
              WHERE u.project_id = $1
-               AND ua.created_at >= NOW() - INTERVAL '{days} days'
+               AND ua.created_at >= NOW() - make_interval(days => $2)
              GROUP BY bucket_time, ua.update_id
              ORDER BY bucket_time ASC"
         ))
         .bind(project_id)
+        .bind(days)
         .fetch_all(&state.db)
         .await?
     };

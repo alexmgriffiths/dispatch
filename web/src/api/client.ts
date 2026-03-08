@@ -786,6 +786,60 @@ export async function deleteChannel(name: string): Promise<void> {
   if (!res.ok) throw new Error(await res.text());
 }
 
+// -- User Overrides --
+
+export interface UserOverrideRecord {
+  id: number;
+  projectId: number;
+  userId: string;
+  branchName: string;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface CreateUserOverridePayload {
+  userId: string;
+  branchName: string;
+  note?: string;
+}
+
+export async function listUserOverrides(): Promise<UserOverrideRecord[]> {
+  if (USE_MOCK) return [];
+  const res = await authFetch(`${BASE}/user-overrides`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function createUserOverride(
+  payload: CreateUserOverridePayload,
+): Promise<UserOverrideRecord> {
+  if (USE_MOCK) {
+    return {
+      id: Math.floor(Math.random() * 1000),
+      projectId: 1,
+      userId: payload.userId,
+      branchName: payload.branchName,
+      note: payload.note ?? null,
+      createdAt: new Date().toISOString(),
+    };
+  }
+  const res = await authFetch(`${BASE}/user-overrides`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function deleteUserOverride(id: number): Promise<void> {
+  if (USE_MOCK) return;
+  const res = await authFetch(`${BASE}/user-overrides/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 // -- API Keys --
 
 export interface ApiKeyRecord {

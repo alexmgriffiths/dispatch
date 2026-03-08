@@ -20,8 +20,11 @@ import {
   deleteApiKey,
   getGcPreview,
   runGc,
+  listUserOverrides,
+  createUserOverride,
+  deleteUserOverride,
 } from '../api/client'
-import type { WebhookRecord, WebhookDeliveryRecord, UserListItem, BranchRecord, ChannelRecord, ApiKeyRecord, GcStats } from '../api/client'
+import type { WebhookRecord, WebhookDeliveryRecord, UserListItem, BranchRecord, ChannelRecord, ApiKeyRecord, GcStats, UserOverrideRecord } from '../api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -91,9 +94,16 @@ export default function Settings() {
   const [gcRunning, setGcRunning] = useState(false)
   const [gcResult, setGcResult] = useState<string | null>(null)
 
+  const [userOverrides, setUserOverrides] = useState<UserOverrideRecord[]>([])
+  const [showOverrideForm, setShowOverrideForm] = useState(false)
+  const [newOverrideUserId, setNewOverrideUserId] = useState('')
+  const [newOverrideBranch, setNewOverrideBranch] = useState('')
+  const [newOverrideNote, setNewOverrideNote] = useState('')
+
   useEffect(() => {
     if (tab === 'webhooks') loadWebhooks()
     else if (tab === 'branches') loadBranchesAndChannels()
+    else if (tab === 'targeting') loadTargeting()
     else if (tab === 'apikeys') loadApiKeys()
     else if (tab === 'storage') loadGcStats()
     else loadUsers()
@@ -124,6 +134,37 @@ export default function Settings() {
     try { setLoading(true); setError(''); setApiKeys(await listApiKeys()) }
     catch (e) { setError(e instanceof Error ? e.message : 'Failed to load API keys') }
     finally { setLoading(false) }
+  }
+
+  async function loadTargeting() {
+    try {
+      setLoading(true); setError('')
+      const [o, b] = await Promise.all([listUserOverrides(), listBranches()])
+      setUserOverrides(o); setBranches(b)
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load targeting') }
+    finally { setLoading(false) }
+  }
+
+  async function handleCreateOverride() {
+    if (!newOverrideUserId.trim() || !newOverrideBranch) return
+    setSaving(true); setError('')
+    try {
+      await createUserOverride({
+        userId: newOverrideUserId.trim(),
+        branchName: newOverrideBranch,
+        note: newOverrideNote.trim() || undefined,
+      })
+      setShowOverrideForm(false)
+      setNewOverrideUserId(''); setNewOverrideBranch(''); setNewOverrideNote('')
+      loadTargeting()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to create override') }
+    finally { setSaving(false) }
+  }
+
+  async function handleDeleteOverride(id: number) {
+    setError('')
+    try { await deleteUserOverride(id); loadTargeting() }
+    catch (e) { setError(e instanceof Error ? e.message : 'Failed to delete override') }
   }
 
   async function loadGcStats() {
@@ -320,6 +361,11 @@ export default function Settings() {
               </Button>
             </div>
           )}
+          {tab === 'targeting' && !showOverrideForm && (
+            <Button onClick={() => setShowOverrideForm(true)}>
+              <Plus className="h-4 w-4" /> Add override
+            </Button>
+          )}
         </div>
       </div>
 
@@ -329,6 +375,7 @@ export default function Settings() {
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="apikeys">API Keys</TabsTrigger>
             <TabsTrigger value="branches">Branches & Channels</TabsTrigger>
+            <TabsTrigger value="targeting">User Targeting</TabsTrigger>
             <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
             <TabsTrigger value="storage">Storage</TabsTrigger>
           </TabsList>
@@ -692,6 +739,109 @@ export default function Settings() {
                 )}
               </div>
             ) : null}
+          </TabsContent>
+
+          {/* User Targeting tab */}
+          <TabsContent value="targeting" className="space-y-4">
+            {showOverrideForm && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Add User Override</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-2">
+                      <Label>User ID</Label>
+                      <Input
+                        placeholder="e.g. user_abc123"
+                        value={newOverrideUserId}
+                        onChange={e => setNewOverrideUserId(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Branch</Label>
+                      <Select value={newOverrideBranch} onValueChange={setNewOverrideBranch}>
+                        <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
+                        <SelectContent>
+                          {branches.map(b => (
+                            <SelectItem key={b.name} value={b.name}>{b.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Note <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                      <Input
+                        placeholder="e.g. Beta tester, QA team"
+                        value={newOverrideNote}
+                        onChange={e => setNewOverrideNote(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button onClick={handleCreateOverride} disabled={saving || !newOverrideUserId.trim() || !newOverrideBranch}>
+                      {saving ? 'Creating...' : 'Create override'}
+                    </Button>
+                    <Button variant="outline" onClick={() => { setShowOverrideForm(false); setNewOverrideUserId(''); setNewOverrideBranch(''); setNewOverrideNote('') }}>
+                      Cancel
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {loading ? (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+              </div>
+            ) : userOverrides.length === 0 ? (
+              <div className="rounded-xl border bg-card p-8 text-center">
+                <p className="text-sm text-muted-foreground mb-1">No user overrides configured</p>
+                <p className="text-xs text-muted-foreground">
+                  Pin specific users to a branch to bypass normal channel routing. Useful for internal testing, beta programs, and QA.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl border bg-card overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/30">
+                      <th className="text-left font-medium px-4 py-2.5">User ID</th>
+                      <th className="text-left font-medium px-4 py-2.5">Branch</th>
+                      <th className="text-left font-medium px-4 py-2.5">Note</th>
+                      <th className="text-left font-medium px-4 py-2.5">Created</th>
+                      <th className="w-10" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {userOverrides.map(o => (
+                      <tr key={o.id} className="border-b last:border-0 hover:bg-muted/20">
+                        <td className="px-4 py-2.5 font-mono text-xs">{o.userId}</td>
+                        <td className="px-4 py-2.5">
+                          <Badge variant="secondary">{o.branchName}</Badge>
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{o.note || '—'}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground text-xs">
+                          {new Date(o.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <Button variant="ghost" size="sm" onClick={() => handleDeleteOverride(o.id)}>
+                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground/70">How it works: </span>
+                When a device sends the <code className="text-xs bg-muted px-1 py-0.5 rounded">expo-user-id</code> header matching an override, it receives updates from the override branch instead of the normal channel routing. This takes priority over channel-level and rollout configuration.
+              </p>
+            </div>
           </TabsContent>
 
           {/* Webhooks tab */}

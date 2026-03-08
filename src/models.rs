@@ -153,6 +153,17 @@ pub struct Channel {
     pub min_runtime_version: Option<String>,
 }
 
+#[derive(FromRow, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserOverride {
+    pub id: i64,
+    pub project_id: i64,
+    pub user_id: String,
+    pub branch_name: String,
+    pub note: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
 // -- Response models --
 
 #[derive(Serialize)]

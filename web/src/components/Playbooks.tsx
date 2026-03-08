@@ -57,6 +57,10 @@ export default function Playbooks({ onNavigate }: Props) {
               </Step>
             </ol>
 
+            <Warning>
+              Rollout bucketing requires each device to send a stable <Code>expo-device-id</Code> header. Without it, bucketing is random and non-sticky — devices may flip between the old and new update on every check. See the <button className="text-primary hover:underline" onClick={() => onNavigate('getting-started')}>Getting Started</button> guide for setup instructions.
+            </Warning>
+
             <Tip>
               You can also set rollout percentage in CI by passing <Code>--rollout 10</Code> to the publish step.
               This way updates never start at 100%.
@@ -133,6 +137,10 @@ export default function Playbooks({ onNavigate }: Props) {
                 <strong>Finalize.</strong> Once fully rolled out, update the channel's main branch pointer to <Code>release-v2</Code> and remove the rollout branch.
               </Step>
             </ol>
+
+            <Warning>
+              Deterministic bucketing requires each device to send a stable <Code>expo-device-id</Code> header. Without it, devices are bucketed randomly on every request. See <button className="text-primary hover:underline" onClick={() => onNavigate('getting-started')}>Getting Started &gt; Enable device tracking</button>.
+            </Warning>
 
             <Tip>
               Device bucketing is deterministic — the same device always gets the same branch for a given rollout percentage. Users won't flip between versions.
@@ -483,6 +491,17 @@ function Tip({ children }: { children: React.ReactNode }) {
     <div className="rounded-lg border bg-muted/30 p-3 mt-3">
       <p className="text-xs text-muted-foreground">
         <span className="font-semibold text-foreground/70">Tip: </span>
+        {children}
+      </p>
+    </div>
+  )
+}
+
+function Warning({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 mt-3">
+      <p className="text-xs text-amber-800">
+        <span className="font-semibold">Required: </span>
         {children}
       </p>
     </div>
