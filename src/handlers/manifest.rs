@@ -91,6 +91,20 @@ pub async fn handle_get_manifest(
         .get("expo-device-id")
         .and_then(|v| v.to_str().ok());
 
+    // Derive the server's own base URL for asset proxying
+    let asset_base_url = {
+        let scheme = headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("http");
+        let host = headers
+            .get("x-forwarded-host")
+            .or_else(|| headers.get("host"))
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("localhost");
+        format!("{scheme}://{host}/v1/ota/assets")
+    };
+
     // Resolve channel → branch(es) for branch-based routing
     let channel_config = sqlx::query_as::<_, crate::models::Channel>(
         "SELECT * FROM channels WHERE name = $1 AND project_id = $2",
@@ -215,6 +229,7 @@ pub async fn handle_get_manifest(
                     protocol_version,
                     expect_signature,
                     None,
+                    &asset_base_url,
                 )
                 .await;
             }
@@ -232,11 +247,16 @@ pub async fn handle_get_manifest(
     }
 
     // Check if client already has this update
+    println!("[DEBUG] Manifest request: platform={platform}, runtime={runtime_version}, channel={channel}, branch={target_branch}");
+    println!("[DEBUG] Latest update: id={}, uuid={}, created_at={}", update.id, update.update_uuid, update.created_at);
+    println!("[DEBUG] Client current_update_id: {:?}", current_update_id);
     if protocol_version == 1 {
         if let Some(ref current_id) = current_update_id {
             if current_id == &update.update_uuid {
+                println!("[DEBUG] Client already has latest, returning no-update");
                 return build_no_update_response(&state, protocol_version, expect_signature);
             }
+            println!("[DEBUG] Client has different update, serving new one");
         }
     }
 
@@ -287,6 +307,7 @@ pub async fn handle_get_manifest(
         protocol_version,
         expect_signature,
         client_asset_hashes.as_deref(),
+        &asset_base_url,
     )
     .await
 }
@@ -310,6 +331,7 @@ async fn build_update_response(
     protocol_version: u8,
     expect_signature: bool,
     client_asset_hashes: Option<&[String]>,
+    asset_base_url: &str,
 ) -> Result<Response, AppError> {
     let assets = sqlx::query_as::<_, Asset>(
         "SELECT * FROM assets WHERE update_id = $1 AND is_launch_asset = FALSE",
@@ -338,10 +360,10 @@ async fn build_update_response(
 
     let asset_metadatas: Vec<AssetMetadata> = filtered_assets
         .iter()
-        .map(|a| asset_to_metadata(a, &state.config.s3_base_url))
+        .map(|a| asset_to_metadata(a, asset_base_url))
         .collect();
 
-    let launch_asset_metadata = asset_to_metadata(&launch_asset, &state.config.s3_base_url);
+    let launch_asset_metadata = asset_to_metadata(&launch_asset, asset_base_url);
 
     let manifest = ManifestBody {
         id: update.update_uuid.clone(),
@@ -393,9 +415,10 @@ async fn build_update_response(
     form.add_part(
         &manifest_json,
         "application/json; charset=utf-8",
+        "manifest",
         manifest_headers,
     );
-    form.add_part(&extensions_json, "application/json", vec![]);
+    form.add_part(&extensions_json, "application/json", "extensions", vec![]);
 
     let mut response = build_multipart_response(form, protocol_version);
 
@@ -482,6 +505,7 @@ fn build_directive_response(
     form.add_part(
         &directive_json,
         "application/json; charset=utf-8",
+        "directive",
         directive_headers,
     );
 

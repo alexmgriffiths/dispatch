@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod assets;
 pub mod auth_handler;
 pub mod audit;
 pub mod branches;

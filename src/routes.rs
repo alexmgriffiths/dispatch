@@ -27,6 +27,7 @@ use crate::handlers::auth_handler::{
 };
 use crate::handlers::audit::{handle_list_audit_log, handle_update_history};
 use crate::handlers::builds::{handle_delete_build, handle_list_builds, handle_publish_build, handle_upload_build};
+use crate::handlers::assets::handle_proxy_asset;
 use crate::handlers::manifest::handle_get_manifest;
 use crate::handlers::projects::{handle_create_project, handle_delete_project, handle_list_projects};
 use crate::handlers::rollback::handle_create_rollback;
@@ -53,10 +54,14 @@ pub fn create_router(state: AppState) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
+    // OTA client routes — no compression (expo-updates can't parse compressed multipart)
+    let ota_client_routes = Router::new()
+        .route("/manifest/{project_slug}", get(handle_get_manifest))
+        .route("/assets/{*key}", get(handle_proxy_asset));
+
     // Public routes — no auth required
     let public_routes = Router::new()
         .route("/healthz", get(|| async { "ok" }))
-        .route("/manifest/{project_slug}", get(handle_get_manifest))
         .route("/auth/login", post(handle_login))
         .route("/auth/register", post(handle_register))
         .route("/auth/setup-status", get(handle_setup_status))
@@ -117,9 +122,14 @@ pub fn create_router(state: AppState) -> Router {
         .route("/projects", get(handle_list_projects).post(handle_create_project))
         .route("/projects/{slug}", delete(handle_delete_project));
 
-    let ota_routes = Router::new()
+    let compressed_routes = Router::new()
         .merge(public_routes)
-        .merge(protected_routes);
+        .merge(protected_routes)
+        .layer(CompressionLayer::new());
+
+    let ota_routes = Router::new()
+        .merge(ota_client_routes)
+        .merge(compressed_routes);
 
     let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "./web/dist".to_string());
     let serve_spa = ServeDir::new(&static_dir)
@@ -138,7 +148,6 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .nest("/v1/ota", ota_routes)
         .fallback_service(static_service)
-        .layer(CompressionLayer::new())
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()

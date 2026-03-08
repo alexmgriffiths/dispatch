@@ -44,7 +44,6 @@ struct BundleMetadata {
 #[derive(Debug, Deserialize)]
 struct AssetEntry {
     path: String,
-    #[allow(dead_code)]
     ext: String,
 }
 
@@ -160,12 +159,19 @@ pub async fn run(opts: PublishOptions) -> Result<()> {
             .with_context(|| format!("Failed to read bundle: {}", bundle_full_path.display()))?;
         assets.push((bundle_path.clone(), bundle_data));
 
-        // Add other assets
+        // Add other assets — append the ext from metadata so the server
+        // stores the correct file_extension (the filenames in dist/ are bare
+        // content hashes with no extension).
         for asset in &bundle_meta.assets {
             let asset_full_path = dist_dir.join(&asset.path);
             if asset_full_path.exists() {
                 let data = std::fs::read(&asset_full_path)?;
-                assets.push((asset.path.clone(), data));
+                let name = if !asset.ext.is_empty() && !asset.path.ends_with(&format!(".{}", asset.ext)) {
+                    format!("{}.{}", asset.path, asset.ext)
+                } else {
+                    asset.path.clone()
+                };
+                assets.push((name, data));
             }
         }
 

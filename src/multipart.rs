@@ -18,8 +18,9 @@ impl MultipartMixed {
         }
     }
 
-    pub fn add_part(&mut self, body: &str, content_type: &str, extra_headers: Vec<(&str, &str)>) {
+    pub fn add_part(&mut self, body: &str, content_type: &str, name: &str, extra_headers: Vec<(&str, &str)>) {
         let mut headers = vec![
+            ("content-disposition".to_string(), format!("form-data; name=\"{name}\"")),
             ("content-type".to_string(), content_type.to_string()),
         ];
         for (k, v) in extra_headers {
