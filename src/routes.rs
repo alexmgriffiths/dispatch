@@ -30,6 +30,7 @@ use crate::handlers::audit::{handle_list_audit_log, handle_update_history};
 use crate::handlers::builds::{handle_delete_build, handle_list_builds, handle_publish_build, handle_upload_build};
 use crate::handlers::assets::handle_proxy_asset;
 use crate::handlers::health_metrics::handle_report_health_metrics;
+use crate::handlers::observe::handle_list_observe_events;
 use crate::handlers::manifest::handle_get_manifest;
 use crate::handlers::projects::{handle_create_project, handle_delete_project, handle_list_projects};
 use crate::handlers::rollback::handle_create_rollback;
@@ -190,6 +191,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/rollout-executions/{id}/flags/{flag_id}", delete(handle_remove_execution_flag))
         .route("/rollout-executions/{id}/flags/{flag_id}/revert", post(handle_revert_flag))
         .route("/rollout-executions/{id}/events", get(handle_execution_events))
+        .route("/observe/events", get(handle_list_observe_events))
         .route("/telemetry/timeseries", get(handle_telemetry_timeseries))
         .route("/telemetry/flag-impacts", get(handle_flag_impacts))
         .route("/telemetry/events", get(handle_telemetry_events));

@@ -14,6 +14,7 @@ import FeatureFlags from './components/FeatureFlags'
 import Contexts from './components/Contexts'
 import RolloutPolicies from './components/RolloutPolicies'
 import Telemetry from './components/Telemetry'
+import Observe from './components/Observe'
 import DispatchLogo from './components/DispatchLogo'
 import WelcomeModal, { WELCOME_SEEN_KEY } from './components/WelcomeModal'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -37,10 +38,13 @@ import {
   Shield,
   Zap,
   Activity,
+  Eye,
+  Bug,
+  AlertTriangle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type Page = 'updates' | 'builds' | 'publish' | 'adoption' | 'telemetry' | 'audit' | 'settings' | 'flags' | 'contexts' | 'guide' | 'playbooks' | 'rollouts' | 'policies'
+type Page = 'updates' | 'builds' | 'publish' | 'adoption' | 'telemetry' | 'audit' | 'settings' | 'flags' | 'contexts' | 'guide' | 'playbooks' | 'rollouts' | 'policies' | 'observe'
 
 const GUIDE_DISMISSED_KEY = 'dispatch-guide-dismissed'
 
@@ -58,6 +62,7 @@ const PAGE_PATHS: Record<Page, string> = {
   playbooks: '/playbooks',
   rollouts: '/rollouts',
   policies: '/policies',
+  observe: '/observe',
 }
 const PATH_TO_PAGE: Record<string, Page> = Object.fromEntries(
   Object.entries(PAGE_PATHS).map(([page, path]) => [path, page as Page])
@@ -229,6 +234,10 @@ function App() {
     { page: 'contexts', label: 'Contexts', icon: <Users className="h-4 w-4" /> },
   ]
 
+  const observeNavItems: { page: Page; label: string; icon: React.ReactNode }[] = [
+    { page: 'observe', label: 'Observe', icon: <Eye className="h-4 w-4" /> },
+  ]
+
   const insightsNavItems: { page: Page; label: string; icon: React.ReactNode }[] = [
     { page: 'adoption', label: 'Adoption', icon: <BarChart3 className="h-4 w-4" /> },
     { page: 'telemetry', label: 'Telemetry', icon: <Activity className="h-4 w-4" /> },
@@ -337,6 +346,23 @@ function App() {
             </button>
           ))}
 
+          <span className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Observe</span>
+          {observeNavItems.map((item) => (
+            <button
+              key={item.page}
+              onClick={() => setPage(item.page)}
+              className={cn(
+                'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer',
+                page === item.page
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+              )}
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
+
           <span className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Insights</span>
           {insightsNavItems.map((item) => (
             <button
@@ -415,6 +441,7 @@ function App() {
         {page === 'playbooks' && <Playbooks onNavigate={(p) => setPage(p as Page)} />}
         {page === 'rollouts' && <RolloutPolicies defaultTab="executions" />}
         {page === 'policies' && <RolloutPolicies defaultTab="policies" />}
+        {page === 'observe' && <Observe />}
       </main>
     </div>
     </TooltipProvider>

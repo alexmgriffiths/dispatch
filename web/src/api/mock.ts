@@ -1,4 +1,4 @@
-import type { UpdateRecord, BuildRecord, AuditLogRecord, WebhookRecord, BranchRecord, ChannelRecord, AdoptionResponse, FlagListItemRecord, FlagWithDetailsRecord, FlagTargetingRuleRecord, FlagEvaluationSummary, FlagContextRecord, FlagContextEvaluationRecord } from './client'
+import type { UpdateRecord, BuildRecord, AuditLogRecord, WebhookRecord, BranchRecord, ChannelRecord, AdoptionResponse, FlagListItemRecord, FlagWithDetailsRecord, FlagTargetingRuleRecord, FlagEvaluationSummary, FlagContextRecord, FlagContextEvaluationRecord, ObserveEvent } from './client'
 
 function daysAgo(days: number): string {
   const d = new Date()
@@ -966,3 +966,49 @@ export function getMockFlagEvaluations(flagId: number, days = 7): FlagEvaluation
     lastEvaluatedAt: daysAgo(0),
   }
 }
+
+function hoursAgo(hours: number): string {
+  const d = new Date()
+  d.setHours(d.getHours() - hours)
+  d.setMinutes(Math.floor(Math.random() * 60))
+  return d.toISOString()
+}
+
+const devices = ['device-a1b2c3', 'device-d4e5f6', 'device-g7h8i9', 'device-j0k1l2', 'device-m3n4o5', 'device-p6q7r8']
+const platforms = ['ios', 'android'] as const
+
+const noDetail = { stackTrace: null, errorName: null, componentStack: null, isFatal: false, tags: null } as const
+
+export const mockObserveEvents: ObserveEvent[] = [
+  // JS Errors
+  { id: 1, updateUuid: uuid(), deviceId: devices[0], channelName: 'production', platform: 'ios', runtimeVersion: '2.4.1', eventType: 'js_error', eventName: null, eventMessage: "TypeError: undefined is not an object (evaluating 'user.profile.name')", count: 3, flagStates: { 'new-checkout': true }, errorName: 'TypeError', isFatal: false, stackTrace: "TypeError: undefined is not an object (evaluating 'user.profile.name')\n    at ProfileScreen (ProfileScreen.tsx:42:18)\n    at renderWithHooks (react-dom.development.js:14985)\n    at mountIndeterminateComponent (react-dom.development.js:17811)\n    at beginWork (react-dom.development.js:19049)", componentStack: '    in ProfileScreen (at SceneView.tsx:132)\n    in SceneView (at useDescriptors.tsx:218)\n    in RNSScreen', tags: { screen: 'ProfileScreen', osVersion: 'iOS 17.4' }, receivedAt: hoursAgo(1) },
+  { id: 2, updateUuid: uuid(), deviceId: devices[1], channelName: 'production', platform: 'android', runtimeVersion: '2.4.1', eventType: 'js_error', eventName: null, eventMessage: "TypeError: undefined is not an object (evaluating 'user.profile.name')", count: 1, flagStates: { 'new-checkout': true }, errorName: 'TypeError', isFatal: false, stackTrace: "TypeError: undefined is not an object (evaluating 'user.profile.name')\n    at ProfileScreen (ProfileScreen.tsx:42:18)\n    at renderWithHooks (react-dom.development.js:14985)", componentStack: null, tags: { screen: 'ProfileScreen', osVersion: 'Android 14' }, receivedAt: hoursAgo(2) },
+  { id: 3, updateUuid: uuid(), deviceId: devices[2], channelName: 'production', platform: 'ios', runtimeVersion: '2.4.1', eventType: 'js_error', eventName: null, eventMessage: 'ReferenceError: Cannot access variable before initialization', count: 2, flagStates: { 'new-checkout': true, 'dark-mode': 'variant-a' }, errorName: 'ReferenceError', isFatal: false, stackTrace: "ReferenceError: Cannot access 'config' before initialization\n    at CheckoutScreen (CheckoutScreen.tsx:15:5)\n    at renderWithHooks (react-dom.development.js:14985)", componentStack: null, tags: { screen: 'CheckoutScreen' }, receivedAt: hoursAgo(3) },
+  { id: 4, updateUuid: uuid(), deviceId: devices[3], channelName: 'staging', platform: 'android', runtimeVersion: '2.4.0', eventType: 'js_error', eventName: null, eventMessage: "SyntaxError: Unexpected token '<'", count: 1, flagStates: { 'new-checkout': false }, ...noDetail, receivedAt: hoursAgo(5) },
+  { id: 5, updateUuid: uuid(), deviceId: devices[0], channelName: 'production', platform: 'ios', runtimeVersion: '2.4.1', eventType: 'js_error', eventName: null, eventMessage: 'RangeError: Maximum call stack size exceeded', count: 1, flagStates: { 'new-checkout': true }, errorName: 'RangeError', isFatal: true, stackTrace: 'RangeError: Maximum call stack size exceeded\n    at deepMerge (utils.ts:89:3)\n    at deepMerge (utils.ts:92:12)\n    at deepMerge (utils.ts:92:12)\n    at deepMerge (utils.ts:92:12)', componentStack: null, tags: null, receivedAt: hoursAgo(8) },
+  { id: 6, updateUuid: uuid(), deviceId: devices[4], channelName: 'production', platform: 'android', runtimeVersion: '2.4.1', eventType: 'js_error', eventName: null, eventMessage: "TypeError: undefined is not an object (evaluating 'user.profile.name')", count: 5, flagStates: { 'new-checkout': true }, ...noDetail, receivedAt: hoursAgo(12) },
+  { id: 7, updateUuid: uuid(), deviceId: devices[5], channelName: 'canary', platform: 'ios', runtimeVersion: '2.5.0', eventType: 'js_error', eventName: null, eventMessage: 'Error: Network request failed', count: 2, flagStates: null, errorName: 'Error', isFatal: false, stackTrace: 'Error: Network request failed\n    at fetch (networking.js:120:3)\n    at ApiClient.request (api.ts:45:22)\n    at async loadProducts (ProductList.tsx:28:18)', componentStack: null, tags: { screen: 'ProductList' }, receivedAt: hoursAgo(1) },
+  { id: 8, updateUuid: uuid(), deviceId: devices[1], channelName: 'production', platform: 'android', runtimeVersion: '2.4.1', eventType: 'js_error', eventName: null, eventMessage: 'Error: Network request failed', count: 1, flagStates: { 'new-checkout': false }, ...noDetail, receivedAt: hoursAgo(18) },
+
+  // Crashes
+  { id: 9, updateUuid: uuid(), deviceId: devices[0], channelName: 'production', platform: 'ios', runtimeVersion: '2.4.1', eventType: 'crash', eventName: null, eventMessage: 'EXC_BAD_ACCESS (SIGSEGV) in RCTBridge', count: 1, flagStates: { 'new-checkout': true }, errorName: 'SIGSEGV', isFatal: true, stackTrace: 'EXC_BAD_ACCESS (code=1, address=0x0)\n0  CoreFoundation  0x00000001a3b2f4c0\n1  libobjc.A.dylib 0x00000001a3845ee0\n2  RCTBridge       0x0000000104a2c380 -[RCTBridge reload]', componentStack: null, tags: { osVersion: 'iOS 17.4' }, receivedAt: hoursAgo(2) },
+  { id: 10, updateUuid: uuid(), deviceId: devices[3], channelName: 'production', platform: 'android', runtimeVersion: '2.4.1', eventType: 'crash', eventName: null, eventMessage: 'java.lang.OutOfMemoryError: Failed to allocate', count: 1, flagStates: { 'new-checkout': true, 'dark-mode': 'variant-a' }, errorName: 'OutOfMemoryError', isFatal: true, stackTrace: 'java.lang.OutOfMemoryError: Failed to allocate a 524288 byte allocation with 262144 free bytes\n    at android.graphics.BitmapFactory.nativeDecodeStream(Native Method)\n    at com.facebook.react.views.image.ReactImageView.onAfterUpdate(ReactImageView.java:312)', componentStack: null, tags: { osVersion: 'Android 14' }, receivedAt: hoursAgo(6) },
+  { id: 11, updateUuid: uuid(), deviceId: devices[4], channelName: 'staging', platform: 'android', runtimeVersion: '2.4.0', eventType: 'crash', eventName: null, eventMessage: 'java.lang.NullPointerException in NavigationModule', count: 2, flagStates: null, ...noDetail, isFatal: true, receivedAt: hoursAgo(10) },
+  { id: 12, updateUuid: uuid(), deviceId: devices[2], channelName: 'production', platform: 'ios', runtimeVersion: '2.4.1', eventType: 'crash', eventName: null, eventMessage: 'EXC_BAD_ACCESS (SIGSEGV) in RCTBridge', count: 1, flagStates: { 'new-checkout': true }, ...noDetail, isFatal: true, receivedAt: hoursAgo(14) },
+
+  // Custom events
+  { id: 13, updateUuid: uuid(), deviceId: devices[0], channelName: 'production', platform: 'ios', runtimeVersion: '2.4.1', eventType: 'custom', eventName: 'checkout_completed', eventMessage: null, count: 12, flagStates: { 'new-checkout': true }, ...noDetail, receivedAt: hoursAgo(1) },
+  { id: 14, updateUuid: uuid(), deviceId: devices[1], channelName: 'production', platform: 'android', runtimeVersion: '2.4.1', eventType: 'custom', eventName: 'checkout_completed', eventMessage: null, count: 8, flagStates: { 'new-checkout': true }, ...noDetail, receivedAt: hoursAgo(2) },
+  { id: 15, updateUuid: uuid(), deviceId: devices[2], channelName: 'production', platform: 'ios', runtimeVersion: '2.4.1', eventType: 'custom', eventName: 'onboarding_finished', eventMessage: null, count: 3, flagStates: null, ...noDetail, receivedAt: hoursAgo(4) },
+  { id: 16, updateUuid: uuid(), deviceId: devices[3], channelName: 'staging', platform: 'android', runtimeVersion: '2.4.0', eventType: 'custom', eventName: 'purchase_started', eventMessage: null, count: 5, flagStates: { 'new-checkout': false }, ...noDetail, receivedAt: hoursAgo(6) },
+  { id: 17, updateUuid: uuid(), deviceId: devices[4], channelName: 'production', platform: 'android', runtimeVersion: '2.4.1', eventType: 'custom', eventName: 'checkout_completed', eventMessage: null, count: 15, flagStates: { 'new-checkout': true }, ...noDetail, receivedAt: hoursAgo(3) },
+  { id: 18, updateUuid: uuid(), deviceId: devices[5], channelName: 'production', platform: 'ios', runtimeVersion: '2.4.1', eventType: 'custom', eventName: 'deep_link_opened', eventMessage: null, count: 7, flagStates: null, ...noDetail, receivedAt: hoursAgo(5) },
+  { id: 19, updateUuid: uuid(), deviceId: devices[0], channelName: 'canary', platform: 'ios', runtimeVersion: '2.5.0', eventType: 'custom', eventName: 'purchase_started', eventMessage: null, count: 2, flagStates: null, ...noDetail, receivedAt: hoursAgo(7) },
+  { id: 20, updateUuid: uuid(), deviceId: devices[1], channelName: 'production', platform: 'android', runtimeVersion: '2.4.1', eventType: 'custom', eventName: 'settings_opened', eventMessage: null, count: 4, flagStates: null, ...noDetail, receivedAt: hoursAgo(9) },
+
+  // App launches
+  { id: 21, updateUuid: uuid(), deviceId: devices[0], channelName: 'production', platform: 'ios', runtimeVersion: '2.4.1', eventType: 'app_launch', eventName: null, eventMessage: null, count: 25, flagStates: { 'new-checkout': true }, ...noDetail, receivedAt: hoursAgo(1) },
+  { id: 22, updateUuid: uuid(), deviceId: devices[1], channelName: 'production', platform: 'android', runtimeVersion: '2.4.1', eventType: 'app_launch', eventName: null, eventMessage: null, count: 18, flagStates: { 'new-checkout': true }, ...noDetail, receivedAt: hoursAgo(2) },
+  { id: 23, updateUuid: uuid(), deviceId: devices[2], channelName: 'production', platform: 'ios', runtimeVersion: '2.4.1', eventType: 'app_launch', eventName: null, eventMessage: null, count: 30, flagStates: { 'new-checkout': true, 'dark-mode': 'variant-a' }, ...noDetail, receivedAt: hoursAgo(3) },
+  { id: 24, updateUuid: uuid(), deviceId: devices[3], channelName: 'staging', platform: 'android', runtimeVersion: '2.4.0', eventType: 'app_launch', eventName: null, eventMessage: null, count: 10, flagStates: { 'new-checkout': false }, ...noDetail, receivedAt: hoursAgo(5) },
+]

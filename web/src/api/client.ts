@@ -9,6 +9,7 @@ import {
   mockFlags,
   getMockFlagDetail,
   getMockFlagEvaluations,
+  mockObserveEvents,
 } from "./mock";
 
 const BASE = "/v1/ota";
@@ -2316,6 +2317,160 @@ export async function getAdoption(opts?: {
   if (opts?.updateId) params.set("update_id", String(opts.updateId));
   if (opts?.bucket) params.set("bucket", opts.bucket);
   const res = await authFetch(`${BASE}/insights/adoption?${params}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// -- Observe (Events / Errors / Crashes) --
+
+export interface ObserveEvent {
+  id: number;
+  updateUuid: string | null;
+  deviceId: string;
+  channelName: string | null;
+  platform: string;
+  runtimeVersion: string;
+  eventType: string;
+  eventName: string | null;
+  eventMessage: string | null;
+  count: number;
+  flagStates: Record<string, unknown> | null;
+  stackTrace: string | null;
+  errorName: string | null;
+  componentStack: string | null;
+  isFatal: boolean;
+  tags: Record<string, unknown> | null;
+  receivedAt: string;
+}
+
+export interface ObserveGroup {
+  key: string;
+  totalCount: number;
+  uniqueDevices: number;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+export interface ObserveListResponse {
+  events: ObserveEvent[];
+  total: number;
+}
+
+export interface ObserveGroupResponse {
+  groups: ObserveGroup[];
+  total: number;
+}
+
+export interface ObserveParams {
+  type?: string;
+  search?: string;
+  channel?: string;
+  platform?: string;
+  deviceId?: string;
+  updateUuid?: string;
+  from?: string;
+  to?: string;
+  groupBy?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listObserveEvents(
+  params?: ObserveParams,
+): Promise<ObserveListResponse> {
+  if (USE_MOCK) {
+    await mockDelay();
+    let filtered: ObserveEvent[] = structuredClone(mockObserveEvents);
+    if (params?.type) filtered = filtered.filter((e: ObserveEvent) => e.eventType === params.type);
+    if (params?.search) {
+      const q = params.search.toLowerCase();
+      filtered = filtered.filter(
+        (e: ObserveEvent) =>
+          (e.eventMessage?.toLowerCase().includes(q)) ||
+          (e.eventName?.toLowerCase().includes(q)),
+      );
+    }
+    if (params?.channel) filtered = filtered.filter((e: ObserveEvent) => e.channelName === params.channel);
+    if (params?.platform) filtered = filtered.filter((e: ObserveEvent) => e.platform === params.platform);
+    const total = filtered.length;
+    const offset = params?.offset ?? 0;
+    const limit = params?.limit ?? 50;
+    return { events: filtered.slice(offset, offset + limit), total };
+  }
+  const qs = new URLSearchParams();
+  if (params?.type) qs.set("type", params.type);
+  if (params?.search) qs.set("search", params.search);
+  if (params?.channel) qs.set("channel", params.channel);
+  if (params?.platform) qs.set("platform", params.platform);
+  if (params?.deviceId) qs.set("device_id", params.deviceId);
+  if (params?.updateUuid) qs.set("update_uuid", params.updateUuid);
+  if (params?.from) qs.set("from", params.from);
+  if (params?.to) qs.set("to", params.to);
+  if (params?.groupBy) qs.set("group_by", params.groupBy);
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const res = await authFetch(`${BASE}/observe/events${suffix}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function listObserveGroups(
+  params?: ObserveParams,
+): Promise<ObserveGroupResponse> {
+  if (USE_MOCK) {
+    await mockDelay();
+    let filtered: ObserveEvent[] = structuredClone(mockObserveEvents);
+    if (params?.type) filtered = filtered.filter((e: ObserveEvent) => e.eventType === params.type);
+    if (params?.search) {
+      const q = params.search.toLowerCase();
+      filtered = filtered.filter(
+        (e: ObserveEvent) =>
+          (e.eventMessage?.toLowerCase().includes(q)) ||
+          (e.eventName?.toLowerCase().includes(q)),
+      );
+    }
+    if (params?.channel) filtered = filtered.filter((e: ObserveEvent) => e.channelName === params.channel);
+    if (params?.platform) filtered = filtered.filter((e: ObserveEvent) => e.platform === params.platform);
+    // Group by message or name
+    const groupField = params?.groupBy === "name" ? "eventName" : "eventMessage";
+    const groupMap = new Map<string, { totalCount: number; uniqueDevices: Set<string>; firstSeen: string; lastSeen: string }>();
+    for (const e of filtered) {
+      const key = (groupField === "eventName" ? e.eventName : e.eventMessage) || "(empty)";
+      const existing = groupMap.get(key);
+      if (existing) {
+        existing.totalCount += e.count;
+        existing.uniqueDevices.add(e.deviceId);
+        if (e.receivedAt < existing.firstSeen) existing.firstSeen = e.receivedAt;
+        if (e.receivedAt > existing.lastSeen) existing.lastSeen = e.receivedAt;
+      } else {
+        groupMap.set(key, {
+          totalCount: e.count,
+          uniqueDevices: new Set([e.deviceId]),
+          firstSeen: e.receivedAt,
+          lastSeen: e.receivedAt,
+        });
+      }
+    }
+    const groups: ObserveGroup[] = Array.from(groupMap.entries())
+      .map(([key, v]) => ({ key, totalCount: v.totalCount, uniqueDevices: v.uniqueDevices.size, firstSeen: v.firstSeen, lastSeen: v.lastSeen }))
+      .sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime());
+    const offset = params?.offset ?? 0;
+    const limit = params?.limit ?? 50;
+    return { groups: groups.slice(offset, offset + limit), total: groups.length };
+  }
+  const qs = new URLSearchParams();
+  if (params?.type) qs.set("type", params.type);
+  if (params?.search) qs.set("search", params.search);
+  if (params?.channel) qs.set("channel", params.channel);
+  if (params?.platform) qs.set("platform", params.platform);
+  if (params?.from) qs.set("from", params.from);
+  if (params?.to) qs.set("to", params.to);
+  qs.set("group_by", params?.groupBy || "message");
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const res = await authFetch(`${BASE}/observe/events${suffix}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

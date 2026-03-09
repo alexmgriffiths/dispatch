@@ -8,6 +8,7 @@ pub mod contexts;
 pub mod feature_flags;
 pub mod health_metrics;
 pub mod manifest;
+pub mod observe;
 pub mod projects;
 pub mod rollback;
 pub mod rollout_evaluator;

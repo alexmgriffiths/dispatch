@@ -29,6 +29,12 @@ pub struct HealthEventPayload {
     #[serde(default = "default_count")]
     pub count: i32,
     pub flag_states: Option<serde_json::Value>,
+    pub stack_trace: Option<String>,
+    pub error_name: Option<String>,
+    pub component_stack: Option<String>,
+    #[serde(default)]
+    pub is_fatal: bool,
+    pub tags: Option<serde_json::Value>,
 }
 
 fn default_count() -> i32 {
@@ -55,8 +61,9 @@ pub async fn handle_report_health_metrics(
         sqlx::query(
             "INSERT INTO health_events_raw \
              (project_id, update_uuid, device_id, channel_name, platform, \
-              runtime_version, event_type, event_name, event_message, count, flag_states) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+              runtime_version, event_type, event_name, event_message, count, flag_states, \
+              stack_trace, error_name, component_stack, is_fatal, tags) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
         )
         .bind(project_id)
         .bind(&body.update_uuid)
@@ -69,6 +76,11 @@ pub async fn handle_report_health_metrics(
         .bind(&event.message)
         .bind(event.count)
         .bind(&event.flag_states)
+        .bind(&event.stack_trace)
+        .bind(&event.error_name)
+        .bind(&event.component_stack)
+        .bind(event.is_fatal)
+        .bind(&event.tags)
         .execute(&state.db)
         .await
         .map_err(|e| { tracing::error!(error = %e, event_type = %event.event_type, "Step 2: raw event insert failed"); AppError::Internal(e.to_string()) })?;
@@ -81,6 +93,10 @@ pub async fn handle_report_health_metrics(
         .and_hms_opt(now.time().hour(), 0, 0)
         .unwrap()
         .and_utc();
+
+    // Normalize NULL update_uuid to empty string so the UNIQUE constraint
+    // works correctly (NULL != NULL in Postgres, breaking ON CONFLICT).
+    let update_uuid_normalized = body.update_uuid.clone().unwrap_or_default();
 
     for event in &body.events {
         sqlx::query(
@@ -98,7 +114,7 @@ pub async fn handle_report_health_metrics(
         .bind(&body.channel)
         .bind(&body.platform)
         .bind(&body.runtime_version)
-        .bind(&body.update_uuid)
+        .bind(&update_uuid_normalized)
         .bind(&event.event_type)
         .bind(&event.name)
         .bind(event.count as i64)
@@ -261,7 +277,8 @@ async fn upsert_flag_health_snapshots(
         for (var_value,) in &variation_values {
             let var_str = var_value.to_string().trim_matches('"').to_string();
 
-            // App launch events where this flag had this specific variation value (denominator)
+            // App launches where this flag had this specific variation (denominator).
+            // The SDK sends flag_states on app_launch events so we get per-variation counts.
             let launches_for_variation = sqlx::query_scalar::<_, Option<i64>>(
                 "SELECT SUM(count)::BIGINT FROM health_events_raw \
                  WHERE project_id = $1 AND received_at >= $2 \
@@ -282,11 +299,11 @@ async fn upsert_flag_health_snapshots(
                 continue;
             }
 
-            // Error events where this flag had this specific variation value (numerator)
-            let errors_for_variation = sqlx::query_scalar::<_, Option<i64>>(
+            // JS error events for this variation (numerator for error_rate)
+            let js_errors_for_variation = sqlx::query_scalar::<_, Option<i64>>(
                 "SELECT SUM(count)::BIGINT FROM health_events_raw \
                  WHERE project_id = $1 AND received_at >= $2 \
-                 AND event_type IN ('js_error', 'crash') \
+                 AND event_type = 'js_error' \
                  AND channel_name IS NOT DISTINCT FROM $3 \
                  AND flag_states ->> $4 = $5",
             )
@@ -299,8 +316,29 @@ async fn upsert_flag_health_snapshots(
             .await?
             .unwrap_or(0);
 
-            let error_rate = ((errors_for_variation as f64 / launches_for_variation as f64) * 10000.0).round() / 100.0;
-            let crash_free = ((100.0 - error_rate) * 100.0).round() / 100.0;
+            // Crash events for this variation (numerator for crash_free)
+            let crashes_for_variation = sqlx::query_scalar::<_, Option<i64>>(
+                "SELECT SUM(count)::BIGINT FROM health_events_raw \
+                 WHERE project_id = $1 AND received_at >= $2 \
+                 AND event_type = 'crash' \
+                 AND channel_name IS NOT DISTINCT FROM $3 \
+                 AND flag_states ->> $4 = $5",
+            )
+            .bind(project_id)
+            .bind(window_start)
+            .bind(&body.channel)
+            .bind(flag_key)
+            .bind(&var_str)
+            .fetch_one(db)
+            .await?
+            .unwrap_or(0);
+
+            // error_rate = % of launches that had at least one error, capped at 100
+            let error_rate_raw = (js_errors_for_variation + crashes_for_variation) as f64 / launches_for_variation as f64 * 100.0;
+            let error_rate = (error_rate_raw.min(100.0) * 100.0).round() / 100.0;
+            // crash_free = % of launches with no crashes
+            let crash_rate_raw = crashes_for_variation as f64 / launches_for_variation as f64 * 100.0;
+            let crash_free = ((100.0 - crash_rate_raw).max(0.0).min(100.0) * 100.0).round() / 100.0;
 
             // Unique devices for this variation
             let devices = sqlx::query_scalar::<_, Option<i64>>(
