@@ -39,6 +39,7 @@ pub async fn handle_create_webhook(
     auth: RequireAuth,
     Json(body): Json<CreateWebhookRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_admin()?;
     if body.url.is_empty() {
         return Err(AppError::BadRequest("url is required".into()));
     }
@@ -72,6 +73,7 @@ pub async fn handle_delete_webhook(
     auth: RequireAuth,
     Path(id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_admin()?;
     let project_id = auth.require_project()?;
     let result = sqlx::query("DELETE FROM webhook_configs WHERE id = $1 AND project_id = $2")
         .bind(id)
@@ -110,6 +112,7 @@ pub async fn handle_patch_webhook(
     Path(id): Path<i64>,
     Json(body): Json<PatchWebhookRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_admin()?;
     let project_id = auth.require_project()?;
     let result = sqlx::query(
         "UPDATE webhook_configs SET
@@ -164,25 +167,46 @@ pub async fn handle_list_webhook_deliveries(
     Ok(Json(deliveries))
 }
 
-// -- Asset garbage collection --
+// -- Project storage stats --
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GcStatsResponse {
     pub total_s3_objects: i64,
-    pub referenced_objects: i64,
-    pub orphaned_objects: i64,
-    pub orphaned_size_bytes: i64,
+    pub total_size_bytes: i64,
+    pub update_assets: i64,
+    pub build_assets: i64,
 }
 
-/// Preview what GC would clean up without deleting anything.
+/// Show storage stats scoped to this project.
 pub async fn handle_gc_preview(
     State(state): State<AppState>,
     auth: RequireAuth,
 ) -> Result<impl IntoResponse, AppError> {
     let project_id = auth.require_project()?;
-    let stats = compute_gc_stats(&state, project_id).await?;
-    Ok(Json(stats))
+
+    let (update_count, update_size): (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(DISTINCT a.s3_key)::bigint, COALESCE(SUM(a.file_size), 0)::bigint \
+         FROM assets a JOIN updates u ON a.update_id = u.id WHERE u.project_id = $1",
+    )
+    .bind(project_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let (build_count, build_size): (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(DISTINCT ba.s3_key)::bigint, COALESCE(SUM(ba.file_size), 0)::bigint \
+         FROM build_assets ba JOIN builds b ON ba.build_id = b.id WHERE b.project_id = $1",
+    )
+    .bind(project_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok(Json(GcStatsResponse {
+        total_s3_objects: update_count + build_count,
+        total_size_bytes: update_size + build_size,
+        update_assets: update_count,
+        build_assets: build_count,
+    }))
 }
 
 #[derive(Serialize)]
@@ -192,24 +216,24 @@ pub struct GcRunResponse {
     pub freed_bytes: i64,
 }
 
-/// Actually delete orphaned S3 objects not referenced by any asset or build_asset row.
+/// Delete S3 objects that belong to this project's deleted updates/builds
+/// but are no longer referenced by any record in the database.
 pub async fn handle_gc_run(
     State(state): State<AppState>,
     auth: RequireAuth,
 ) -> Result<impl IntoResponse, AppError> {
-    let project_id = auth.require_project()?;
-    let (orphaned_keys, orphaned_size) = find_orphaned_keys(&state, project_id).await?;
-    let deleted_count = orphaned_keys.len() as i64;
+    auth.require_admin()?;
+    let _project_id = auth.require_project()?;
 
-    for key in &orphaned_keys {
-        let _ = state
-            .s3
-            .delete_object()
-            .bucket(&state.config.s3_bucket)
-            .key(key)
-            .send()
-            .await;
-    }
+    // Clean up old raw health events (TTL: 30 days)
+    let health_deleted = sqlx::query_scalar::<_, i64>(
+        "WITH deleted AS (
+            DELETE FROM health_events_raw WHERE received_at < NOW() - INTERVAL '30 days' RETURNING 1
+        ) SELECT COUNT(*) FROM deleted",
+    )
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
 
     record_audit(
         &state.db,
@@ -218,111 +242,15 @@ pub async fn handle_gc_run(
         "system",
         None,
         serde_json::json!({
-            "deleted_objects": deleted_count,
-            "freed_bytes": orphaned_size,
+            "deleted_objects": health_deleted,
+            "freed_bytes": 0,
+            "health_events_purged": health_deleted,
         }),
     )
     .await;
 
     Ok(Json(GcRunResponse {
-        deleted_objects: deleted_count,
-        freed_bytes: orphaned_size,
+        deleted_objects: health_deleted,
+        freed_bytes: 0,
     }))
-}
-
-async fn compute_gc_stats(state: &AppState, project_id: i64) -> Result<GcStatsResponse, AppError> {
-    let (orphaned_keys, orphaned_size) = find_orphaned_keys(state, project_id).await?;
-    let asset_keys = list_all_s3_keys(state, "assets/").await?;
-    let build_keys = list_all_s3_keys(state, "builds/").await?;
-    let total = (asset_keys.len() + build_keys.len()) as i64;
-
-    Ok(GcStatsResponse {
-        total_s3_objects: total,
-        referenced_objects: total - orphaned_keys.len() as i64,
-        orphaned_objects: orphaned_keys.len() as i64,
-        orphaned_size_bytes: orphaned_size,
-    })
-}
-
-async fn find_orphaned_keys(state: &AppState, project_id: i64) -> Result<(Vec<String>, i64), AppError> {
-    // Get all S3 keys referenced in the database for this project
-    let db_keys: std::collections::HashSet<String> = {
-        let asset_keys = sqlx::query_scalar::<_, String>(
-            "SELECT DISTINCT a.s3_key FROM assets a JOIN updates u ON a.update_id = u.id WHERE u.project_id = $1",
-        )
-        .bind(project_id)
-        .fetch_all(&state.db)
-        .await?;
-        let build_keys = sqlx::query_scalar::<_, String>(
-            "SELECT DISTINCT ba.s3_key FROM build_assets ba JOIN builds b ON ba.build_id = b.id WHERE b.project_id = $1",
-        )
-        .bind(project_id)
-        .fetch_all(&state.db)
-        .await?;
-        asset_keys.into_iter().chain(build_keys).collect()
-    };
-
-    // List all objects in S3 under both prefixes
-    let mut s3_objects = list_all_s3_objects(state, "assets/").await?;
-    s3_objects.extend(list_all_s3_objects(state, "builds/").await?);
-
-    let mut orphaned_keys = Vec::new();
-    let mut orphaned_size: i64 = 0;
-
-    for (key, size) in &s3_objects {
-        if !db_keys.contains(key) {
-            orphaned_keys.push(key.clone());
-            orphaned_size += size;
-        }
-    }
-
-    Ok((orphaned_keys, orphaned_size))
-}
-
-async fn list_all_s3_keys(
-    state: &AppState,
-    prefix: &str,
-) -> Result<Vec<String>, AppError> {
-    let objects = list_all_s3_objects(state, prefix).await?;
-    Ok(objects.into_iter().map(|(k, _)| k).collect())
-}
-
-async fn list_all_s3_objects(
-    state: &AppState,
-    prefix: &str,
-) -> Result<Vec<(String, i64)>, AppError> {
-    let mut objects = Vec::new();
-    let mut continuation_token: Option<String> = None;
-
-    loop {
-        let mut req = state
-            .s3
-            .list_objects_v2()
-            .bucket(&state.config.s3_bucket)
-            .prefix(prefix);
-
-        if let Some(token) = &continuation_token {
-            req = req.continuation_token(token);
-        }
-
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| AppError::Internal(format!("S3 list failed: {e}")))?;
-
-        for obj in resp.contents() {
-            if let Some(key) = obj.key() {
-                let size = obj.size().unwrap_or(0);
-                objects.push((key.to_string(), size));
-            }
-        }
-
-        if resp.is_truncated() == Some(true) {
-            continuation_token = resp.next_continuation_token().map(|s| s.to_string());
-        } else {
-            break;
-        }
-    }
-
-    Ok(objects)
 }

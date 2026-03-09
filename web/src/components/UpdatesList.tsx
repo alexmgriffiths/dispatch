@@ -12,7 +12,7 @@ import { Slider } from '@/components/ui/slider'
 import { Skeleton } from '@/components/ui/skeleton'
 import { InfoTip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { Plus, GitCommit, GitBranch, Search, X } from 'lucide-react'
+import { Plus, GitCommit, GitBranch, Search, X, Upload, LayoutGrid, Rocket } from 'lucide-react'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -374,18 +374,15 @@ export default function UpdatesList({ onPublish }: Props) {
             ))}
           </div>
         ) : updates.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <div className="text-3xl mb-3">&#9898;</div>
-            <h3 className="font-semibold">{hasFilters ? 'No matching updates' : 'No updates yet'}</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              {hasFilters
-                ? 'Try adjusting your filters or search query.'
-                : 'Publish your first OTA update to get started.'}
-            </p>
-            {hasFilters && (
+          hasFilters ? (
+            <div className="flex flex-col items-center py-16 text-center">
+              <h3 className="font-semibold">No matching releases</h3>
+              <p className="text-sm text-muted-foreground mt-1">Try adjusting your filters or search query.</p>
               <Button variant="outline" size="sm" className="mt-3" onClick={clearFilters}>Clear filters</Button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <ReleasesEmptyState onPublish={onPublish} />
+          )
         ) : (
           <div className="space-y-3">
             {groups.map((group) => renderGroup(group))}
@@ -465,6 +462,98 @@ function PlatformRow({
               onValueChange={([val]) => onUpdateRollout(u, val)}
             />
             <span className="text-[11px] font-medium w-7 text-right">{u.rolloutPercentage}%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ReleasesEmptyState({ onPublish }: { onPublish: () => void }) {
+  return (
+    <div className="max-w-6xl mx-auto px-12 py-20">
+      <div className="grid grid-cols-2 gap-16 items-start">
+        {/* Left — Copy */}
+        <div className="space-y-6 pt-8">
+          <h2 className="text-3xl font-bold tracking-tight leading-tight">
+            Ship OTA updates instantly
+          </h2>
+          <p className="text-muted-foreground text-base leading-relaxed">
+            Releases are over-the-air updates delivered directly to your users' devices without
+            going through the app store. Push bug fixes, content changes, and new features in
+            seconds instead of days.
+          </p>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Each release targets a channel (e.g. production, staging) and can be rolled out
+            gradually with percentage-based controls. Updates are signed, verified, and
+            downloaded in the background.
+          </p>
+          <div className="flex items-center gap-3 mt-2">
+            <Button size="lg" onClick={onPublish}>
+              <Upload className="mr-2 h-4 w-4" /> Publish your first update
+            </Button>
+          </div>
+        </div>
+
+        {/* Right — Preview card */}
+        <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+          {/* Mini header */}
+          <div className="border-b px-5 py-3 flex items-center gap-2 text-sm text-muted-foreground">
+            <LayoutGrid className="h-4 w-4" />
+            <span className="font-medium text-foreground">Releases</span>
+            <span className="ml-auto text-xs">2 releases</span>
+          </div>
+
+          {/* Mock release rows */}
+          <div className="divide-y">
+            <div className="px-5 py-3.5 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Rocket className="h-3.5 w-3.5 text-primary" />
+                <span className="text-sm font-medium">Fix checkout crash on Android</span>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground ml-5">
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">production</Badge>
+                <span className="inline-flex items-center gap-1"><GitBranch className="h-2.5 w-2.5" /> main</span>
+                <span className="font-mono">a3f1b2c</span>
+                <span>2m ago</span>
+              </div>
+              <div className="ml-5 mt-1 flex items-center gap-2">
+                <div className="h-1.5 w-24 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full rounded-full bg-primary" style={{ width: '100%' }} />
+                </div>
+                <span className="text-[10px] text-muted-foreground">100%</span>
+              </div>
+            </div>
+
+            <div className="px-5 py-3.5 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Rocket className="h-3.5 w-3.5 text-primary" />
+                <span className="text-sm font-medium">New onboarding flow</span>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground ml-5">
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">staging</Badge>
+                <span className="inline-flex items-center gap-1"><GitBranch className="h-2.5 w-2.5" /> feature/onboarding</span>
+                <span className="font-mono">e7d42f1</span>
+                <span>1h ago</span>
+              </div>
+              <div className="ml-5 mt-1 flex items-center gap-2">
+                <div className="h-1.5 w-24 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full rounded-full bg-amber-500" style={{ width: '25%' }} />
+                </div>
+                <span className="text-[10px] text-muted-foreground">25%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Summary footer */}
+          <div className="border-t bg-muted/30 px-5 py-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">Features</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>Percentage rollouts</span>
+              <span>Channel targeting</span>
+              <span>Instant rollback</span>
+              <span>Code signing</span>
+            </div>
           </div>
         </div>
       </div>

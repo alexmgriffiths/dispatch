@@ -1,0 +1,275 @@
+{
+  "info": {
+    "name": "Dispatch – Feature Flags",
+    "description": "Feature flags CRUD, environment settings, targeting rules, and public evaluation endpoint for Dispatch OTA server.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/v1/ota" },
+    { "key": "token", "value": "" },
+    { "key": "projectSlug", "value": "default" },
+    { "key": "flagId", "value": "" },
+    { "key": "ruleId", "value": "" },
+    { "key": "channelName", "value": "production" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}" }]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.token) pm.collectionVariables.set('token', json.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Flags CRUD",
+      "item": [
+        {
+          "name": "List flags (with env settings)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Project", "value": "{{projectSlug}}" }],
+            "url": "{{baseUrl}}/flags"
+          }
+        },
+        {
+          "name": "Create boolean flag",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set('flagId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Project", "value": "{{projectSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Enable New Checkout\",\n  \"key\": \"new-checkout\",\n  \"flagType\": \"boolean\",\n  \"description\": \"Enable the new checkout flow\"\n}"
+            },
+            "url": "{{baseUrl}}/flags"
+          }
+        },
+        {
+          "name": "Create string flag",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Project", "value": "{{projectSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Button Color\",\n  \"key\": \"button-color\",\n  \"flagType\": \"string\",\n  \"defaultValue\": \"blue\",\n  \"description\": \"CTA button color variant\"\n}"
+            },
+            "url": "{{baseUrl}}/flags"
+          }
+        },
+        {
+          "name": "Get flag with details",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Project", "value": "{{projectSlug}}" }],
+            "url": "{{baseUrl}}/flags/{{flagId}}"
+          }
+        },
+        {
+          "name": "Update flag (toggle / change default)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Project", "value": "{{projectSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": false,\n  \"description\": \"Updated description\"\n}"
+            },
+            "url": "{{baseUrl}}/flags/{{flagId}}"
+          }
+        },
+        {
+          "name": "Delete flag",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Project", "value": "{{projectSlug}}" }],
+            "url": "{{baseUrl}}/flags/{{flagId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Environment Settings",
+      "item": [
+        {
+          "name": "Toggle flag for channel (enable)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Project", "value": "{{projectSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true\n}"
+            },
+            "url": "{{baseUrl}}/flags/{{flagId}}/env/{{channelName}}"
+          }
+        },
+        {
+          "name": "Set channel default value",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Project", "value": "{{projectSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"defaultValue\": true\n}"
+            },
+            "url": "{{baseUrl}}/flags/{{flagId}}/env/{{channelName}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Targeting Rules",
+      "item": [
+        {
+          "name": "Add force rule (global)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set('ruleId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Project", "value": "{{projectSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ruleType\": \"force\",\n  \"variantValue\": true,\n  \"priority\": 0\n}"
+            },
+            "url": "{{baseUrl}}/flags/{{flagId}}/rules"
+          }
+        },
+        {
+          "name": "Add force rule (channel-scoped)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Project", "value": "{{projectSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ruleType\": \"force\",\n  \"variantValue\": true,\n  \"priority\": 0,\n  \"channelName\": \"production\"\n}"
+            },
+            "url": "{{baseUrl}}/flags/{{flagId}}/rules"
+          }
+        },
+        {
+          "name": "Add percentage rollout rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Project", "value": "{{projectSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ruleType\": \"percentage_rollout\",\n  \"variantValue\": true,\n  \"priority\": 10,\n  \"ruleConfig\": {\n    \"percentage\": 25\n  },\n  \"channelName\": \"production\"\n}"
+            },
+            "url": "{{baseUrl}}/flags/{{flagId}}/rules"
+          }
+        },
+        {
+          "name": "Add user list rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Project", "value": "{{projectSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ruleType\": \"user_list\",\n  \"variantValue\": true,\n  \"priority\": 5,\n  \"ruleConfig\": {\n    \"userIds\": [\"user-123\", \"user-456\", \"beta-tester-1\"]\n  }\n}"
+            },
+            "url": "{{baseUrl}}/flags/{{flagId}}/rules"
+          }
+        },
+        {
+          "name": "Delete rule",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Project", "value": "{{projectSlug}}" }],
+            "url": "{{baseUrl}}/flags/{{flagId}}/rules/{{ruleId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public Evaluation",
+      "item": [
+        {
+          "name": "Get flag definitions (no channel filter)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": "{{baseUrl}}/flag-definitions/{{projectSlug}}"
+          }
+        },
+        {
+          "name": "Get flag definitions (with channel)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": "{{baseUrl}}/flag-definitions/{{projectSlug}}?channel={{channelName}}"
+          }
+        }
+      ]
+    }
+  ]
+}

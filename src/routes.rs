@@ -15,6 +15,7 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 
 use crate::config::Config;
+use crate::execution_events::ExecutionEventRegistry;
 use crate::handlers::analytics::{handle_adoption_timeseries, handle_get_update_insights, handle_list_insights};
 use crate::handlers::branches::{
     handle_create_branch, handle_create_channel, handle_delete_branch, handle_delete_channel,
@@ -28,6 +29,7 @@ use crate::handlers::auth_handler::{
 use crate::handlers::audit::{handle_list_audit_log, handle_update_history};
 use crate::handlers::builds::{handle_delete_build, handle_list_builds, handle_publish_build, handle_upload_build};
 use crate::handlers::assets::handle_proxy_asset;
+use crate::handlers::health_metrics::handle_report_health_metrics;
 use crate::handlers::manifest::handle_get_manifest;
 use crate::handlers::projects::{handle_create_project, handle_delete_project, handle_list_projects};
 use crate::handlers::rollback::handle_create_rollback;
@@ -37,6 +39,33 @@ use crate::handlers::settings::{
 };
 use crate::handlers::user_overrides::{
     handle_create_user_override, handle_delete_user_override, handle_list_user_overrides,
+};
+use crate::handlers::contexts::{
+    handle_create_context, handle_delete_context, handle_get_context,
+    handle_list_context_kinds, handle_list_contexts,
+};
+use crate::handlers::rollout_executions::{
+    handle_add_execution_flag, handle_advance_execution, handle_cancel_execution,
+    handle_execution_events, handle_get_execution, handle_list_executions,
+    handle_pause_execution, handle_remove_execution_flag, handle_resume_execution,
+    handle_revert_flag,
+};
+use crate::handlers::rollout_policies::{
+    handle_create_policy, handle_delete_policy, handle_get_policy,
+    handle_list_policies, handle_update_policy,
+};
+use crate::handlers::segments::{
+    handle_list_segments, handle_create_segment, handle_get_segment,
+    handle_update_segment, handle_delete_segment,
+};
+use crate::handlers::feature_flags::{
+    handle_create_flag, handle_create_rule, handle_delete_flag, handle_delete_rule,
+    handle_get_flag, handle_get_flag_definitions, handle_get_flag_health, handle_list_flags,
+    handle_patch_env_setting, handle_get_flag_evaluations, handle_patch_flag, handle_patch_rule,
+    handle_patch_variation, handle_report_evaluations,
+};
+use crate::handlers::telemetry::{
+    handle_flag_impacts, handle_telemetry_events, handle_telemetry_timeseries,
 };
 use crate::handlers::upload::{
     handle_create_update, handle_delete_update, handle_list_updates, handle_patch_update,
@@ -49,6 +78,7 @@ pub struct AppState {
     pub s3: S3Client,
     pub config: Config,
     pub private_key: Option<RsaPrivateKey>,
+    pub execution_events: ExecutionEventRegistry,
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -60,7 +90,9 @@ pub fn create_router(state: AppState) -> Router {
     // OTA client routes — no compression (expo-updates can't parse compressed multipart)
     let ota_client_routes = Router::new()
         .route("/manifest/{project_slug}", get(handle_get_manifest))
-        .route("/assets/{*key}", get(handle_proxy_asset));
+        .route("/assets/{*key}", get(handle_proxy_asset))
+        .route("/flag-definitions/{project_slug}", get(handle_get_flag_definitions))
+        .route("/health-metrics", post(handle_report_health_metrics));
 
     // Public routes — no auth required
     let public_routes = Router::new()
@@ -128,7 +160,39 @@ pub fn create_router(state: AppState) -> Router {
             "/user-overrides",
             get(handle_list_user_overrides).post(handle_create_user_override),
         )
-        .route("/user-overrides/{id}", delete(handle_delete_user_override));
+        .route("/user-overrides/{id}", delete(handle_delete_user_override))
+        .route("/flags", get(handle_list_flags).post(handle_create_flag))
+        .route(
+            "/flags/{id}",
+            get(handle_get_flag).patch(handle_patch_flag).delete(handle_delete_flag),
+        )
+        .route("/flags/{id}/rules", post(handle_create_rule))
+        .route("/flags/{id}/rules/{rule_id}", delete(handle_delete_rule).patch(handle_patch_rule))
+        .route("/flags/{id}/variations/{variation_id}", patch(handle_patch_variation))
+        .route("/flags/{id}/env/{channel_name}", patch(handle_patch_env_setting))
+        .route("/flags/{id}/evaluations", get(handle_get_flag_evaluations))
+        .route("/flags/{id}/health", get(handle_get_flag_health))
+        .route("/flag-evaluations", post(handle_report_evaluations))
+        .route("/contexts", get(handle_list_contexts).post(handle_create_context))
+        .route("/contexts/kinds", get(handle_list_context_kinds))
+        .route("/contexts/{id}", get(handle_get_context).delete(handle_delete_context))
+        .route("/segments", get(handle_list_segments).post(handle_create_segment))
+        .route("/segments/{id}", get(handle_get_segment).patch(handle_update_segment).delete(handle_delete_segment))
+        .route("/rollout-policies", get(handle_list_policies).post(handle_create_policy))
+        .route("/rollout-policies/{id}", get(handle_get_policy).patch(handle_update_policy).delete(handle_delete_policy))
+        .route("/rollout-executions", get(handle_list_executions))
+        .route("/rollout-executions/{id}", get(handle_get_execution))
+        .route("/rollout-executions/{id}/pause", post(handle_pause_execution))
+        .route("/rollout-executions/{id}/resume", post(handle_resume_execution))
+        .route("/rollout-executions/{id}/cancel", post(handle_cancel_execution))
+        .route("/rollout-executions/{id}/advance", post(handle_advance_execution))
+        .route("/rollout-executions/{id}/flags", post(handle_add_execution_flag))
+        .route("/rollout-executions/{id}/flags/{flag_id}", delete(handle_remove_execution_flag))
+        .route("/rollout-executions/{id}/flags/{flag_id}/revert", post(handle_revert_flag))
+        .route("/rollout-executions/{id}/events", get(handle_execution_events))
+        .route("/telemetry/timeseries", get(handle_telemetry_timeseries))
+        .route("/telemetry/flag-impacts", get(handle_flag_impacts))
+        .route("/telemetry/events", get(handle_telemetry_events));
 
     let compressed_routes = Router::new()
         .merge(public_routes)

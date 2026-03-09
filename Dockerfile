@@ -19,18 +19,16 @@ WORKDIR /app
 # Copy manifest + lock for dependency caching
 COPY Cargo.toml ./
 COPY Cargo.lock* ./
-COPY crates/dispatch-cli/Cargo.toml crates/dispatch-cli/Cargo.toml
 
 # Stub src so cargo can compile deps without real code
-RUN mkdir -p src && echo 'fn main(){}' > src/main.rs \
-    && mkdir -p crates/dispatch-cli/src && echo 'fn main(){}' > crates/dispatch-cli/src/main.rs
+RUN mkdir -p src && echo 'fn main(){}' > src/main.rs
 COPY migrations migrations
-RUN cargo build --release -p dispatch-ota
+RUN cargo build --release
 
 # Replace stub with real source and rebuild
 RUN rm src/main.rs
 COPY src src
-RUN touch src/main.rs && cargo build --release -p dispatch-ota
+RUN touch src/main.rs && cargo build --release
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim

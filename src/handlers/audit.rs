@@ -13,10 +13,14 @@ pub struct AuditQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,
     pub action: Option<String>,
+    pub entity_type: Option<String>,
+    pub entity_id: Option<i64>,
+    /// Cursor: return entries with id < before (for pagination)
+    pub before: Option<i64>,
 }
 
 fn default_limit() -> i64 {
-    50
+    200
 }
 
 pub async fn handle_list_audit_log(
@@ -27,24 +31,45 @@ pub async fn handle_list_audit_log(
     let project_id = auth.require_project()?;
     let limit = params.limit.min(200);
 
-    let entries = if let Some(action) = &params.action {
-        sqlx::query_as::<_, AuditLogEntry>(
-            &format!("{AUDIT_SELECT} WHERE a.project_id = $1 AND a.action = $2 ORDER BY a.created_at DESC LIMIT $3"),
-        )
-        .bind(project_id)
-        .bind(action)
-        .bind(limit)
-        .fetch_all(&state.db)
-        .await?
-    } else {
-        sqlx::query_as::<_, AuditLogEntry>(
-            &format!("{AUDIT_SELECT} WHERE a.project_id = $1 ORDER BY a.created_at DESC LIMIT $2"),
-        )
-        .bind(project_id)
-        .bind(limit)
-        .fetch_all(&state.db)
-        .await?
-    };
+    let mut conditions = vec!["a.project_id = $1".to_string()];
+    let mut bind_idx = 2u32;
+
+    if params.action.is_some() {
+        conditions.push(format!("a.action = ${bind_idx}"));
+        bind_idx += 1;
+    }
+    if params.entity_type.is_some() {
+        conditions.push(format!("a.entity_type = ${bind_idx}"));
+        bind_idx += 1;
+    }
+    if params.entity_id.is_some() {
+        conditions.push(format!("a.entity_id = ${bind_idx}"));
+        bind_idx += 1;
+    }
+    if params.before.is_some() {
+        conditions.push(format!("a.id < ${bind_idx}"));
+        bind_idx += 1;
+    }
+
+    let sql = format!(
+        "{AUDIT_SELECT} WHERE {} ORDER BY a.created_at DESC LIMIT ${bind_idx}",
+        conditions.join(" AND "),
+    );
+
+    let mut query = sqlx::query_as::<_, AuditLogEntry>(&sql).bind(project_id);
+    if let Some(action) = &params.action {
+        query = query.bind(action);
+    }
+    if let Some(entity_type) = &params.entity_type {
+        query = query.bind(entity_type);
+    }
+    if let Some(entity_id) = params.entity_id {
+        query = query.bind(entity_id);
+    }
+    if let Some(before) = params.before {
+        query = query.bind(before);
+    }
+    let entries = query.bind(limit).fetch_all(&state.db).await?;
 
     Ok(Json(entries))
 }
@@ -95,6 +120,28 @@ pub async fn record_audit(
     .bind(auth.user_id)
     .bind(auth.api_key_id)
     .bind(auth.project_id)
+    .execute(db)
+    .await;
+}
+
+/// Record an audit entry for system-initiated actions (e.g., rollout execution flag changes).
+pub async fn record_system_audit(
+    db: &sqlx::PgPool,
+    project_id: i64,
+    action: &str,
+    entity_type: &str,
+    entity_id: Option<i64>,
+    details: serde_json::Value,
+) {
+    let _ = sqlx::query(
+        "INSERT INTO audit_log (action, entity_type, entity_id, details, project_id) \
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(action)
+    .bind(entity_type)
+    .bind(entity_id)
+    .bind(details)
+    .bind(project_id)
     .execute(db)
     .await;
 }

@@ -1,184 +1,385 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { listAuditLog } from '../api/client'
 import type { AuditLogRecord } from '../api/client'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { User, Key } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
+import {
+  User,
+  Key,
+  Search,
+  ChevronDown,
+  Upload,
+  Layers,
+  GitBranch,
+  Flag,
+  Bell,
+  RefreshCw,
+  Zap,
+  Trash2,
+  Pencil,
+  Plus,
+  RotateCcw,
+} from 'lucide-react'
 
-type BadgeVariant = 'ios' | 'android' | 'canary' | 'staging' | 'disabled'
+const CATEGORIES = [
+  { key: 'all', label: 'All' },
+  { key: 'update', label: 'Releases' },
+  { key: 'build', label: 'Builds' },
+  { key: 'branch', label: 'Branches' },
+  { key: 'channel', label: 'Channels' },
+  { key: 'flag', label: 'Flags' },
+  { key: 'webhook', label: 'Webhooks' },
+] as const
+
+const ACTION_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+  'build.uploaded':     { label: 'Build uploaded',       icon: <Upload className="h-3.5 w-3.5" />,      color: 'text-blue-500 bg-blue-500/10' },
+  'build.published':    { label: 'Build published',      icon: <Zap className="h-3.5 w-3.5" />,         color: 'text-blue-500 bg-blue-500/10' },
+  'build.deleted':      { label: 'Build deleted',        icon: <Trash2 className="h-3.5 w-3.5" />,      color: 'text-red-500 bg-red-500/10' },
+  'update.created':     { label: 'Release created',      icon: <Plus className="h-3.5 w-3.5" />,        color: 'text-violet-500 bg-violet-500/10' },
+  'update.patched':     { label: 'Release modified',     icon: <Pencil className="h-3.5 w-3.5" />,      color: 'text-violet-500 bg-violet-500/10' },
+  'update.republished': { label: 'Release republished',  icon: <RefreshCw className="h-3.5 w-3.5" />,   color: 'text-violet-500 bg-violet-500/10' },
+  'update.deleted':     { label: 'Release deleted',      icon: <Trash2 className="h-3.5 w-3.5" />,      color: 'text-red-500 bg-red-500/10' },
+  'update.rollback':    { label: 'Rollback created',     icon: <RotateCcw className="h-3.5 w-3.5" />,   color: 'text-amber-500 bg-amber-500/10' },
+  'branch.created':     { label: 'Branch created',       icon: <GitBranch className="h-3.5 w-3.5" />,   color: 'text-emerald-500 bg-emerald-500/10' },
+  'branch.deleted':     { label: 'Branch deleted',       icon: <Trash2 className="h-3.5 w-3.5" />,      color: 'text-red-500 bg-red-500/10' },
+  'channel.created':    { label: 'Channel created',      icon: <Layers className="h-3.5 w-3.5" />,      color: 'text-emerald-500 bg-emerald-500/10' },
+  'channel.updated':    { label: 'Channel updated',      icon: <Pencil className="h-3.5 w-3.5" />,      color: 'text-emerald-500 bg-emerald-500/10' },
+  'channel.deleted':    { label: 'Channel deleted',      icon: <Trash2 className="h-3.5 w-3.5" />,      color: 'text-red-500 bg-red-500/10' },
+  'webhook.created':    { label: 'Webhook created',      icon: <Bell className="h-3.5 w-3.5" />,        color: 'text-amber-500 bg-amber-500/10' },
+  'webhook.updated':    { label: 'Webhook updated',      icon: <Pencil className="h-3.5 w-3.5" />,      color: 'text-amber-500 bg-amber-500/10' },
+  'webhook.deleted':    { label: 'Webhook deleted',      icon: <Trash2 className="h-3.5 w-3.5" />,      color: 'text-red-500 bg-red-500/10' },
+  'flag.created':       { label: 'Flag created',         icon: <Flag className="h-3.5 w-3.5" />,        color: 'text-indigo-500 bg-indigo-500/10' },
+  'flag.updated':       { label: 'Flag updated',         icon: <Pencil className="h-3.5 w-3.5" />,      color: 'text-indigo-500 bg-indigo-500/10' },
+  'flag.deleted':       { label: 'Flag deleted',         icon: <Trash2 className="h-3.5 w-3.5" />,      color: 'text-red-500 bg-red-500/10' },
+  'flag.toggled':       { label: 'Flag toggled',         icon: <Zap className="h-3.5 w-3.5" />,         color: 'text-indigo-500 bg-indigo-500/10' },
+  'rule.created':       { label: 'Rule created',         icon: <Plus className="h-3.5 w-3.5" />,        color: 'text-indigo-500 bg-indigo-500/10' },
+  'rule.updated':       { label: 'Rule updated',         icon: <Pencil className="h-3.5 w-3.5" />,      color: 'text-indigo-500 bg-indigo-500/10' },
+  'rule.deleted':       { label: 'Rule deleted',         icon: <Trash2 className="h-3.5 w-3.5" />,      color: 'text-red-500 bg-red-500/10' },
+  'env_setting.updated':{ label: 'Environment updated',  icon: <Pencil className="h-3.5 w-3.5" />,      color: 'text-indigo-500 bg-indigo-500/10' },
+  'variation.updated':  { label: 'Variation updated',    icon: <Pencil className="h-3.5 w-3.5" />,      color: 'text-indigo-500 bg-indigo-500/10' },
+}
+
+function getActionMeta(action: string) {
+  return ACTION_META[action] ?? {
+    label: action,
+    icon: <Zap className="h-3.5 w-3.5" />,
+    color: 'text-muted-foreground bg-muted',
+  }
+}
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const entryDate = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const diff = today.getTime() - entryDate.getTime()
+  const days = Math.floor(diff / 86400000)
+
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  if (days < 7) return d.toLocaleDateString('en-US', { weekday: 'long' })
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: now.getFullYear() !== d.getFullYear() ? 'numeric' : undefined })
+}
+
+function formatTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
+function groupByDate(entries: AuditLogRecord[]): { date: string; entries: AuditLogRecord[] }[] {
+  const groups: Map<string, AuditLogRecord[]> = new Map()
+  for (const entry of entries) {
+    const key = formatDate(entry.createdAt)
+    const list = groups.get(key) ?? []
+    list.push(entry)
+    groups.set(key, list)
+  }
+  return [...groups.entries()].map(([date, entries]) => ({ date, entries }))
+}
 
 export default function AuditLog() {
   const [entries, setEntries] = useState<AuditLogRecord[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [category, setCategory] = useState('all')
+  const [search, setSearch] = useState('')
+  const [hasMore, setHasMore] = useState(true)
 
-  useEffect(() => {
-    loadEntries()
-  }, [])
+  const PAGE_SIZE = 100
 
-  async function loadEntries() {
+  const loadEntries = useCallback(async (append = false, cursor?: number) => {
     try {
-      setLoading(true)
+      if (append) setLoadingMore(true)
+      else setLoading(true)
       setError('')
-      const data = await listAuditLog()
-      setEntries(data)
+
+      const data = await listAuditLog({ limit: PAGE_SIZE + 1, before: cursor })
+
+      if (data.length > PAGE_SIZE) {
+        setHasMore(true)
+        data.pop()
+      } else {
+        setHasMore(false)
+      }
+
+      if (append) {
+        setEntries(prev => [...prev, ...data])
+      } else {
+        setEntries(data)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load audit log')
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
-  }
+  }, [])
 
-  function timeAgo(dateStr: string): string {
-    const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
-    if (seconds < 60) return 'just now'
-    const minutes = Math.floor(seconds / 60)
-    if (minutes < 60) return `${minutes}m ago`
-    const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours}h ago`
-    const days = Math.floor(hours / 24)
-    return `${days}d ago`
-  }
+  useEffect(() => { loadEntries() }, [loadEntries])
 
-  function actionLabel(action: string): string {
-    const labels: Record<string, string> = {
-      'build.uploaded': 'Build Uploaded',
-      'build.published': 'Build Published',
-      'build.deleted': 'Build Deleted',
-      'update.created': 'Update Created',
-      'update.patched': 'Update Modified',
-      'update.republished': 'Update Republished',
-      'update.deleted': 'Update Deleted',
-      'update.rollback': 'Rollback Created',
-      'branch.created': 'Branch Created',
-      'branch.deleted': 'Branch Deleted',
-      'channel.created': 'Channel Created',
-      'channel.updated': 'Channel Updated',
-      'channel.deleted': 'Channel Deleted',
-      'webhook.created': 'Webhook Created',
-      'webhook.updated': 'Webhook Updated',
-      'webhook.deleted': 'Webhook Deleted',
+  // Filter by category and search
+  const filtered = entries.filter((e) => {
+    if (category !== 'all') {
+      const actionPrefix = (e.action ?? '').split('.')[0]
+      // Map flag-related entity types to 'flag' category
+      const flagTypes = ['flag', 'rule', 'env_setting', 'variation']
+      if (category === 'flag') {
+        if (!flagTypes.includes(actionPrefix)) return false
+      } else {
+        if (actionPrefix !== category) return false
+      }
     }
-    return labels[action] || action
-  }
+    if (search) {
+      const q = search.toLowerCase()
+      const meta = getActionMeta(e.action)
+      const detailVals = e.details && typeof e.details === 'object' ? Object.values(e.details).map(String) : []
+      const haystack = [
+        meta.label,
+        e.actorName,
+        e.entityType,
+        e.action,
+        ...detailVals,
+      ].filter(Boolean).join(' ').toLowerCase()
+      if (!haystack.includes(q)) return false
+    }
+    return true
+  })
 
-  function actionBadgeVariant(action: string): BadgeVariant {
-    if (action.startsWith('build.')) return 'ios'
-    if (action.startsWith('update.')) return 'canary'
-    if (action.startsWith('branch.') || action.startsWith('channel.')) return 'android'
-    if (action.startsWith('webhook.')) return 'staging'
-    return 'disabled'
-  }
-
-  function dotColor(action: string): string {
-    if (action.startsWith('build.')) return 'bg-blue-500'
-    if (action.startsWith('update.')) return 'bg-violet-500'
-    if (action.startsWith('branch.') || action.startsWith('channel.')) return 'bg-emerald-500'
-    if (action.startsWith('webhook.')) return 'bg-amber-500'
-    return 'bg-gray-400'
-  }
-
-  const filtered = filter !== 'all'
-    ? entries.filter((e) => e.action.includes(filter))
-    : entries
-
-  const actionTypes = [...new Set(entries.map((e) => e.action))]
+  const grouped = groupByDate(filtered)
 
   return (
-    <>
+    <div className="h-full flex flex-col">
+      {/* Header */}
       <div className="border-b bg-card px-6 py-5">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold">Audit Log</h2>
-            <p className="text-sm text-muted-foreground">Track all changes across your OTA updates</p>
+            <p className="text-sm text-muted-foreground">Track all changes across your project</p>
           </div>
-          {actionTypes.length > 0 && (
-            <Select value={filter} onValueChange={setFilter}>
-              <SelectTrigger className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All events</SelectItem>
-                {actionTypes.map((a) => (
-                  <SelectItem key={a} value={a}>{actionLabel(a)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadEntries()}
+            disabled={loading}
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5 mr-1.5', loading && 'animate-spin')} />
+            Refresh
+          </Button>
         </div>
       </div>
 
-      <div className="p-6">
+      {/* Filters bar */}
+      <div className="border-b px-6 py-3 flex items-center gap-4">
+        {/* Category tabs */}
+        <div className="flex items-center gap-1">
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat.key}
+              onClick={() => setCategory(cat.key)}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer',
+                category === cat.key
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div className="relative ml-auto max-w-xs flex-1">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search events..."
+            className="pl-9 h-8 text-xs"
+          />
+        </div>
+      </div>
+
+      {/* Event list */}
+      <div className="flex-1 overflow-y-auto">
         {error && (
-          <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive mb-4">{error}</div>
+          <div className="mx-6 mt-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
         )}
 
         {loading ? (
-          <div className="relative pl-6 space-y-0">
-            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border" />
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="relative pb-5 last:pb-0">
-                <Skeleton className="absolute -left-6 top-1.5 h-[10px] w-[10px] rounded-full" />
-                <div className="flex flex-wrap items-center gap-2">
-                  <Skeleton className="h-5 w-28 rounded-full" />
-                  <Skeleton className="h-4 w-16" />
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-3 w-12 ml-auto" />
+          <div className="px-6 py-4 space-y-6">
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-16" />
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="flex items-center gap-3 py-2">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                  <Skeleton className="h-3 w-16" />
                 </div>
-                <div className="flex gap-3 mt-1">
-                  <Skeleton className="h-3 w-32" />
-                  <Skeleton className="h-3 w-24" />
+              ))}
+            </div>
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-20" />
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="flex items-center gap-3 py-2">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-28" />
+                  </div>
+                  <Skeleton className="h-3 w-16" />
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <div className="text-3xl mb-3">&#9898;</div>
-            <h3 className="font-semibold">No events yet</h3>
-            <p className="text-sm text-muted-foreground mt-1">Actions will appear here as they happen.</p>
+          <div className="flex flex-col items-center justify-center py-24">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-4">
+              <Search className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <h3 className="font-semibold">No events found</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              {search ? 'Try a different search term.' : 'Actions will appear here as they happen.'}
+            </p>
           </div>
         ) : (
-          <div className="relative pl-6 space-y-0">
-            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border" />
-            {filtered.map((entry) => (
-              <div key={entry.id} className="relative pb-5 last:pb-0">
-                <div className={`absolute -left-6 top-1.5 h-[10px] w-[10px] rounded-full ${dotColor(entry.action)} ring-2 ring-background`} />
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={actionBadgeVariant(entry.action)}>
-                    {actionLabel(entry.action)}
-                  </Badge>
-                  {entry.entityId && (
-                    <span className="text-xs text-muted-foreground">
-                      {entry.entityType} #{entry.entityId}
-                    </span>
-                  )}
-                  {entry.actorName && (
-                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                      {entry.actorType === 'api_key' ? <Key className="h-3 w-3" /> : <User className="h-3 w-3" />}
-                      {entry.actorName}
-                    </span>
-                  )}
-                  <span className="text-xs text-muted-foreground ml-auto">{timeAgo(entry.createdAt)}</span>
+          <div className="px-6 py-4 space-y-6">
+            {grouped.map((group) => (
+              <div key={group.date}>
+                {/* Date header */}
+                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm pb-2">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    {group.date}
+                  </span>
                 </div>
-                {Object.keys(entry.details).length > 0 && (
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-                    {Object.entries(entry.details).map(([key, value]) =>
-                      value != null ? (
-                        <span key={key} className="text-xs text-muted-foreground">
-                          <span className="font-medium text-foreground/70">{key}:</span> {String(value)}
+
+                {/* Events */}
+                <div className="space-y-0.5">
+                  {group.entries.map((entry) => {
+                    const meta = getActionMeta(entry.action)
+                    const details = entry.details && typeof entry.details === 'object' ? Object.entries(entry.details).filter(([, v]) => v != null) : []
+
+                    return (
+                      <div
+                        key={entry.id}
+                        className="group flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-3 transition-colors hover:bg-muted/50"
+                      >
+                        {/* Icon */}
+                        <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', meta.color)}>
+                          {meta.icon}
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{meta.label}</span>
+                            {entry.entityId && (
+                              <span className="text-xs text-muted-foreground font-mono">
+                                {entry.entityType} #{entry.entityId}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Details */}
+                          {details.length > 0 && (
+                            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                              {details.map(([key, value]) => (
+                                <span key={key} className="text-xs text-muted-foreground">
+                                  <span className="text-foreground/60">{key}:</span>{' '}
+                                  {typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Actor */}
+                          {entry.actorName && (
+                            <div className="flex items-center gap-1 mt-1">
+                              {entry.actorType === 'api_key' ? (
+                                <Key className="h-3 w-3 text-muted-foreground" />
+                              ) : (
+                                <User className="h-3 w-3 text-muted-foreground" />
+                              )}
+                              <span className="text-xs text-muted-foreground">{entry.actorName}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Time */}
+                        <span className="text-[11px] text-muted-foreground shrink-0 pt-0.5">
+                          {formatTime(entry.createdAt)}
                         </span>
-                      ) : null
-                    )}
-                  </div>
-                )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             ))}
+
+            {/* Load more */}
+            {hasMore && (
+              <div className="flex justify-center py-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const lastId = entries.length > 0 ? entries[entries.length - 1].id : undefined
+                    loadEntries(true, lastId)
+                  }}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-3.5 w-3.5 mr-1.5" />
+                      Load more
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>
-    </>
+
+      {/* Footer */}
+      {entries.length > 0 && (
+        <div className="border-t px-6 py-2 text-xs text-muted-foreground">
+          {filtered.length} event{filtered.length !== 1 ? 's' : ''}
+          {category !== 'all' && ` in ${CATEGORIES.find(c => c.key === category)?.label}`}
+          {search && ` matching "${search}"`}
+        </div>
+      )}
+    </div>
   )
 }

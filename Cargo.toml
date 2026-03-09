@@ -1,6 +1,3 @@
-[workspace]
-members = [".", "crates/dispatch-cli"]
-
 [package]
 name = "dispatch-ota"
 version = "0.1.0"
@@ -36,3 +33,5 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 hmac = "0.12"
 hex = "0.4"
 argon2 = "0.5"
+dashmap = "6"
+tokio-stream = { version = "0.1", features = ["sync"] }

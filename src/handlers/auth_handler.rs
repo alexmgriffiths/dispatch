@@ -172,6 +172,7 @@ pub async fn handle_register(
                 email: body.email.trim().to_string(),
                 name: body.name.trim().to_string(),
                 role: "admin".to_string(),
+                project_role: Some("admin".to_string()),
             },
         }),
     ))
@@ -199,6 +200,7 @@ pub struct UserInfo {
     pub email: String,
     pub name: String,
     pub role: String,
+    pub project_role: Option<String>,
 }
 
 pub async fn handle_login(
@@ -247,6 +249,7 @@ pub async fn handle_login(
             email,
             name,
             role,
+            project_role: None,
         },
     }))
 }
@@ -287,11 +290,26 @@ pub async fn handle_me(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))?;
 
+    let project_role = if let Some(pid) = auth.project_id {
+        sqlx::query_scalar::<_, String>(
+            "SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2",
+        )
+        .bind(pid)
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+    } else {
+        None
+    };
+
     Ok(Json(UserInfo {
         id: user.0,
         email: user.1,
         name: user.2,
         role: user.3,
+        project_role,
     }))
 }
 
@@ -307,7 +325,7 @@ pub struct InviteRequest {
 }
 
 fn default_role() -> String {
-    "member".to_string()
+    "editor".to_string()
 }
 
 #[derive(Serialize)]
@@ -323,9 +341,12 @@ pub async fn handle_invite(
     auth: RequireAuth,
     Json(body): Json<InviteRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    if body.role != "admin" && body.role != "member" {
+    auth.require_admin()?;
+    let project_id = auth.require_project()?;
+
+    if !["admin", "editor", "viewer"].contains(&body.role.as_str()) {
         return Err(AppError::BadRequest(
-            "Role must be 'admin' or 'member'".into(),
+            "Role must be 'admin', 'editor', or 'viewer'".into(),
         ));
     }
 
@@ -350,6 +371,17 @@ pub async fn handle_invite(
             AppError::Internal(e.to_string())
         }
     })?;
+
+    // Add the invited user to the current project with the specified role
+    sqlx::query(
+        "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, $3) \
+         ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role",
+    )
+    .bind(project_id)
+    .bind(user_id)
+    .bind(&body.role)
+    .execute(&state.db)
+    .await?;
 
     record_audit(
         &state.db,
@@ -412,6 +444,7 @@ pub async fn handle_accept_invite(
         user_id: None,
         api_key_id: None,
         project_id: None,
+        role: crate::auth::Role::Viewer,
     };
     record_audit(
         &state.db,
@@ -447,7 +480,7 @@ pub async fn handle_list_users(
     let project_id = auth.require_project()?;
 
     let users = sqlx::query_as::<_, UserListItem>(
-        "SELECT u.id, u.email, u.name, u.role, u.is_active, (u.password_hash IS NOT NULL) AS has_password, u.created_at
+        "SELECT u.id, u.email, u.name, pm.role, u.is_active, (u.password_hash IS NOT NULL) AS has_password, u.created_at
          FROM users u
          JOIN project_members pm ON pm.user_id = u.id
          WHERE pm.project_id = $1
@@ -493,6 +526,7 @@ pub async fn handle_create_api_key(
     auth: RequireAuth,
     Json(body): Json<CreateApiKeyRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_admin()?;
     if body.name.trim().is_empty() {
         return Err(AppError::BadRequest("Name is required".into()));
     }
@@ -539,6 +573,7 @@ pub async fn handle_list_api_keys(
     State(state): State<AppState>,
     auth: RequireAuth,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_admin()?;
     let project_id = auth.require_project()?;
 
     let keys = sqlx::query_as::<_, ApiKeyListItem>(
@@ -558,6 +593,7 @@ pub async fn handle_revoke_api_key(
     auth: RequireAuth,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_admin()?;
     let project_id = auth.require_project()?;
 
     let rows = sqlx::query("UPDATE api_keys SET is_active = FALSE WHERE id = $1 AND is_active = TRUE AND project_id = $2")
@@ -592,6 +628,7 @@ pub async fn handle_delete_api_key(
     auth: RequireAuth,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_admin()?;
     let project_id = auth.require_project()?;
 
     let rows = sqlx::query("DELETE FROM api_keys WHERE id = $1 AND project_id = $2")

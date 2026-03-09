@@ -19,7 +19,6 @@ import {
   revokeApiKey,
   deleteApiKey,
   getGcPreview,
-  runGc,
   listUserOverrides,
   createUserOverride,
   deleteUserOverride,
@@ -38,7 +37,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { InfoTip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { Plus, Trash2, ArrowRight, Copy, Check, ChevronDown, HardDrive } from 'lucide-react'
+import { Plus, Trash2, ArrowRight, Copy, Check, ChevronDown, Bell, Zap, Globe } from 'lucide-react'
 
 const ALL_EVENTS = [
   'build.uploaded',
@@ -74,7 +73,7 @@ export default function Settings() {
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [invEmail, setInvEmail] = useState('')
   const [invName, setInvName] = useState('')
-  const [invRole, setInvRole] = useState('member')
+  const [invRole, setInvRole] = useState('editor')
   const [inviting, setInviting] = useState(false)
   const [inviteLink, setInviteLink] = useState('')
 
@@ -91,8 +90,6 @@ export default function Settings() {
   const [copiedKey, setCopiedKey] = useState(false)
 
   const [gcStats, setGcStats] = useState<GcStats | null>(null)
-  const [gcRunning, setGcRunning] = useState(false)
-  const [gcResult, setGcResult] = useState<string | null>(null)
 
   const [userOverrides, setUserOverrides] = useState<UserOverrideRecord[]>([])
   const [showOverrideForm, setShowOverrideForm] = useState(false)
@@ -173,16 +170,6 @@ export default function Settings() {
     finally { setLoading(false) }
   }
 
-  async function handleRunGc() {
-    setGcRunning(true); setError(''); setGcResult(null)
-    try {
-      const result = await runGc()
-      setGcResult(`Cleaned up ${result.deletedObjects} orphaned objects, freed ${formatBytes(result.freedBytes)}`)
-      loadGcStats()
-    } catch (e) { setError(e instanceof Error ? e.message : 'GC failed') }
-    finally { setGcRunning(false) }
-  }
-
   function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B'
     if (bytes < 1024) return `${bytes} B`
@@ -252,7 +239,7 @@ export default function Settings() {
     try {
       const res = await inviteUser(invEmail.trim(), invName.trim(), invRole)
       setInviteLink(`${window.location.origin}/accept-invite?token=${res.inviteToken}`)
-      setInvEmail(''); setInvName(''); setInvRole('member'); loadUsers()
+      setInvEmail(''); setInvName(''); setInvRole('editor'); loadUsers()
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to invite user') }
     finally { setInviting(false) }
   }
@@ -406,8 +393,9 @@ export default function Settings() {
                       <Select value={invRole} onValueChange={setInvRole}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="member">Member</SelectItem>
-                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="viewer">Viewer — read-only access</SelectItem>
+                          <SelectItem value="editor">Editor — create and modify</SelectItem>
+                          <SelectItem value="admin">Admin — full access</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -456,7 +444,7 @@ export default function Settings() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-1.5">
                         <span className="font-semibold text-sm">{u.name}</span>
-                        <Badge variant={u.role === 'admin' ? 'critical' : 'production'}>{u.role}</Badge>
+                        <Badge variant={u.role === 'admin' ? 'critical' : u.role === 'editor' ? 'production' : 'staging'}>{u.role}</Badge>
                         {!u.hasPassword && <Badge variant="staging">pending invite</Badge>}
                         {!u.isActive && <Badge variant="disabled">inactive</Badge>}
                       </div>
@@ -691,52 +679,34 @@ export default function Settings() {
               </div>
             ) : gcStats ? (
               <div className="max-w-lg space-y-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div className="rounded-xl border bg-card p-4">
-                    <span className="text-xs text-muted-foreground">Total S3 objects</span>
+                    <span className="text-xs text-muted-foreground">Total assets</span>
                     <p className="text-lg font-semibold">{gcStats.totalS3Objects.toLocaleString()}</p>
                   </div>
                   <div className="rounded-xl border bg-card p-4">
-                    <span className="text-xs text-muted-foreground">Referenced</span>
-                    <p className="text-lg font-semibold">{gcStats.referencedObjects.toLocaleString()}</p>
+                    <span className="text-xs text-muted-foreground">Update assets</span>
+                    <p className="text-lg font-semibold">{gcStats.updateAssets.toLocaleString()}</p>
                   </div>
                   <div className="rounded-xl border bg-card p-4">
-                    <span className="text-xs text-muted-foreground">Orphaned objects</span>
-                    <p className={cn('text-lg font-semibold', gcStats.orphanedObjects > 0 && 'text-amber-500')}>
-                      {gcStats.orphanedObjects.toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border bg-card p-4">
-                    <span className="text-xs text-muted-foreground">Reclaimable space</span>
-                    <p className={cn('text-lg font-semibold', gcStats.orphanedSizeBytes > 0 && 'text-amber-500')}>
-                      {formatBytes(gcStats.orphanedSizeBytes)}
-                    </p>
+                    <span className="text-xs text-muted-foreground">Build assets</span>
+                    <p className="text-lg font-semibold">{gcStats.buildAssets.toLocaleString()}</p>
                   </div>
                 </div>
 
+                <div className="rounded-xl border bg-card p-4">
+                  <span className="text-xs text-muted-foreground">Total storage used</span>
+                  <p className="text-lg font-semibold">{formatBytes(gcStats.totalSizeBytes)}</p>
+                </div>
+
                 <p className="text-xs text-muted-foreground">
-                  Orphaned objects are S3 files no longer referenced by any update or build. This can happen when updates
-                  are deleted but the underlying assets were shared and not cleaned up, or from interrupted uploads.
+                  Storage is scoped to this project. When you delete an update or build,
+                  its assets are automatically cleaned up if no other record references them.
                 </p>
 
-                {gcStats.orphanedObjects > 0 ? (
-                  <div className="flex items-center gap-3">
-                    <Button onClick={handleRunGc} disabled={gcRunning}>
-                      <HardDrive className="h-4 w-4" />
-                      {gcRunning ? 'Cleaning up...' : `Clean up ${gcStats.orphanedObjects} orphaned objects`}
-                    </Button>
-                    <Button variant="outline" onClick={loadGcStats} disabled={gcRunning}>Refresh</Button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <p className="text-sm text-emerald-600 font-medium">No orphaned objects found. Storage is clean.</p>
-                    <Button variant="outline" size="sm" onClick={loadGcStats}>Refresh</Button>
-                  </div>
-                )}
-
-                {gcResult && (
-                  <div className="rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">{gcResult}</div>
-                )}
+                <div className="flex items-center gap-3">
+                  <Button variant="outline" size="sm" onClick={loadGcStats}>Refresh</Button>
+                </div>
               </div>
             ) : null}
           </TabsContent>
@@ -910,10 +880,87 @@ export default function Settings() {
                 ))}
               </div>
             ) : webhooks.length === 0 && !showWebhookForm ? (
-              <div className="flex flex-col items-center py-16 text-center">
-                <div className="text-3xl mb-3">&#9898;</div>
-                <h3 className="font-semibold">No webhooks configured</h3>
-                <p className="text-sm text-muted-foreground mt-1">Add a webhook to receive notifications.</p>
+              <div className="max-w-4xl mx-auto py-12">
+                <div className="grid grid-cols-2 gap-16 items-start">
+                  {/* Left — Copy */}
+                  <div className="space-y-6 pt-4">
+                    <h2 className="text-3xl font-bold tracking-tight leading-tight">
+                      Get notified when things happen
+                    </h2>
+                    <p className="text-muted-foreground text-base leading-relaxed">
+                      Webhooks send real-time HTTP POST requests to your server whenever builds are uploaded,
+                      updates are published, channels change, or rollbacks occur.
+                    </p>
+                    <p className="text-muted-foreground text-sm leading-relaxed">
+                      Use them to trigger Slack notifications, update dashboards, sync with external tools,
+                      or kick off downstream CI/CD pipelines.
+                    </p>
+                    <Button size="lg" onClick={() => setShowWebhookForm(true)} className="mt-2">
+                      <Bell className="mr-2 h-4 w-4" /> Add your first webhook
+                    </Button>
+                  </div>
+
+                  {/* Right — Visual preview */}
+                  <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+                    {/* Mini header */}
+                    <div className="border-b px-5 py-3 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Bell className="h-4 w-4" />
+                      <span className="font-medium text-foreground">Webhooks</span>
+                    </div>
+
+                    {/* Fake webhook entries */}
+                    <div className="px-5 py-4 space-y-3">
+                      <div className="rounded-lg border p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-xs font-medium font-mono">https://hooks.slack.com/services/...</span>
+                          </div>
+                          <div className="h-5 w-9 rounded-full bg-primary flex items-center justify-end px-0.5">
+                            <div className="h-4 w-4 rounded-full bg-white" />
+                          </div>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">build.uploaded</Badge>
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">update.created</Badge>
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">update.rollback</Badge>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-xs font-medium font-mono">https://api.example.com/dispatch</span>
+                          </div>
+                          <div className="h-5 w-9 rounded-full bg-primary flex items-center justify-end px-0.5">
+                            <div className="h-4 w-4 rounded-full bg-white" />
+                          </div>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">channel.updated</Badge>
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">build.published</Badge>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Fake delivery log */}
+                    <div className="border-t px-5 py-3 space-y-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Recent deliveries</span>
+                      {[
+                        { status: 200, event: 'build.uploaded', time: '2s ago' },
+                        { status: 200, event: 'update.created', time: '5m ago' },
+                        { status: 200, event: 'channel.updated', time: '1h ago' },
+                      ].map((d, i) => (
+                        <div key={i} className="flex items-center gap-2 text-[10px]">
+                          <span className="inline-flex h-4 w-8 items-center justify-center rounded bg-emerald-500/15 text-emerald-600 font-mono font-medium">{d.status}</span>
+                          <span className="text-muted-foreground">{d.event}</span>
+                          <span className="text-muted-foreground ml-auto">{d.time}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">

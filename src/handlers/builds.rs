@@ -27,6 +27,7 @@ pub async fn handle_upload_build(
     auth: RequireAuth,
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
 
     let mut runtime_version: Option<String> = None;
@@ -335,6 +336,8 @@ pub struct PublishBuildRequest {
     #[serde(default)]
     pub release_message: String,
     pub group_id: Option<String>,
+    #[serde(default)]
+    pub linked_flags: Vec<crate::handlers::upload::LinkedFlagOverride>,
 }
 
 fn default_channel() -> String {
@@ -359,6 +362,7 @@ pub async fn handle_publish_build(
     Path(build_id): Path<i64>,
     Json(body): Json<PublishBuildRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
 
     if !(0..=100).contains(&body.rollout_percentage) {
@@ -481,6 +485,26 @@ pub async fn handle_publish_build(
     )
     .await;
 
+    // Best-effort auto-start: if an active rollout policy exists for this channel,
+    // automatically kick off a rollout execution.
+    if let Err(e) = crate::handlers::upload::try_auto_start_execution(
+        &state.db,
+        project_id,
+        update_id,
+        &update_uuid,
+        &body.channel,
+        &body.linked_flags,
+    )
+    .await
+    {
+        tracing::warn!(
+            update_id = update_id,
+            channel = %body.channel,
+            error = %e,
+            "Auto-start rollout execution failed (non-fatal)"
+        );
+    }
+
     Ok((
         StatusCode::CREATED,
         Json(PublishBuildResponse {
@@ -498,6 +522,7 @@ pub async fn handle_delete_build(
     auth: RequireAuth,
     Path(build_id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
 
     // Check if any updates reference this build

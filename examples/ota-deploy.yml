@@ -31,7 +31,7 @@ on:
 env:
   DISPATCH_SERVER: ${{ vars.DISPATCH_SERVER }}  # e.g. https://ota.example.com
   DISPATCH_API_KEY: ${{ secrets.DISPATCH_API_KEY }}  # API key from Dashboard > Settings
-  DISPATCH_VERSION: latest                     # or pin to a specific tag, e.g. cli-v0.1.0
+  DISPATCH_VERSION: latest                     # or pin to a specific tag, e.g. v0.1.12
 
 jobs:
   check-native-changes:
@@ -107,9 +107,9 @@ jobs:
       - name: Install Dispatch CLI
         run: |
           if [ "$DISPATCH_VERSION" = "latest" ]; then
-            DOWNLOAD_URL="https://github.com/alexmgriffiths/dispatch/releases/latest/download/dispatch-linux-x64"
+            DOWNLOAD_URL="https://github.com/AppDispatch/cli/releases/latest/download/dispatch-linux-x64"
           else
-            DOWNLOAD_URL="https://github.com/alexmgriffiths/dispatch/releases/download/${DISPATCH_VERSION}/dispatch-linux-x64"
+            DOWNLOAD_URL="https://github.com/AppDispatch/cli/releases/download/${DISPATCH_VERSION}/dispatch-linux-x64"
           fi
           curl -sL "$DOWNLOAD_URL" -o /usr/local/bin/dispatch
           chmod +x /usr/local/bin/dispatch

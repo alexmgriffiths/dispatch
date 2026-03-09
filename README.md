@@ -44,10 +44,12 @@ docker run -p 9999:9999 \
 
 ### 2. Set up your app
 
-Install the CLI:
+Install the CLI from [AppDispatch/cli](https://github.com/AppDispatch/cli):
 
 ```bash
-cargo install --path crates/dispatch-cli
+# Download the latest release for your platform
+curl -sL https://github.com/AppDispatch/cli/releases/latest/download/dispatch-darwin-arm64 -o /usr/local/bin/dispatch
+chmod +x /usr/local/bin/dispatch
 ```
 
 Then from your Expo project:
@@ -161,7 +163,7 @@ dispatch/
 │   ├── auth.rs              # Authentication & project resolution
 │   ├── models.rs            # Database & response models
 │   └── errors.rs            # Error types
-├── crates/dispatch-cli/     # CLI tool (Rust)
+├── packages/                # See github.com/AppDispatch/cli & react-native SDK
 ├── web/                     # Dashboard (React/TypeScript)
 ├── migrations/              # SQL migrations
 ├── examples/                # Example CI/CD workflows

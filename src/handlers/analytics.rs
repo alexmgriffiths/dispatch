@@ -121,37 +121,52 @@ pub async fn handle_adoption_timeseries(
     };
 
     let timeseries = if let Some(uid) = query.update_id {
-        sqlx::query_as::<_, AdoptionBucket>(&format!(
-            "SELECT date_trunc('{interval}', ua.created_at) AS bucket_time,
-                    ua.update_id,
-                    COUNT(*) AS downloads,
-                    COUNT(DISTINCT ua.device_id) AS unique_devices
-             FROM update_analytics ua
-             JOIN updates u ON u.id = ua.update_id
-             WHERE ua.update_id = $1
-               AND u.project_id = $2
-               AND ua.created_at >= NOW() - make_interval(days => $3)
-             GROUP BY bucket_time, ua.update_id
-             ORDER BY bucket_time ASC"
-        ))
+        match interval {
+            "hour" => sqlx::query_as::<_, AdoptionBucket>(
+                "SELECT date_trunc('hour', ua.created_at) AS bucket_time,
+                        ua.update_id, COUNT(*) AS downloads,
+                        COUNT(DISTINCT ua.device_id) AS unique_devices
+                 FROM update_analytics ua JOIN updates u ON u.id = ua.update_id
+                 WHERE ua.update_id = $1 AND u.project_id = $2
+                   AND ua.created_at >= NOW() - make_interval(days => $3)
+                 GROUP BY bucket_time, ua.update_id ORDER BY bucket_time ASC"
+            ),
+            _ => sqlx::query_as::<_, AdoptionBucket>(
+                "SELECT date_trunc('day', ua.created_at) AS bucket_time,
+                        ua.update_id, COUNT(*) AS downloads,
+                        COUNT(DISTINCT ua.device_id) AS unique_devices
+                 FROM update_analytics ua JOIN updates u ON u.id = ua.update_id
+                 WHERE ua.update_id = $1 AND u.project_id = $2
+                   AND ua.created_at >= NOW() - make_interval(days => $3)
+                 GROUP BY bucket_time, ua.update_id ORDER BY bucket_time ASC"
+            ),
+        }
         .bind(uid)
         .bind(project_id)
         .bind(days)
         .fetch_all(&state.db)
         .await?
     } else {
-        sqlx::query_as::<_, AdoptionBucket>(&format!(
-            "SELECT date_trunc('{interval}', ua.created_at) AS bucket_time,
-                    ua.update_id,
-                    COUNT(*) AS downloads,
-                    COUNT(DISTINCT ua.device_id) AS unique_devices
-             FROM update_analytics ua
-             JOIN updates u ON u.id = ua.update_id
-             WHERE u.project_id = $1
-               AND ua.created_at >= NOW() - make_interval(days => $2)
-             GROUP BY bucket_time, ua.update_id
-             ORDER BY bucket_time ASC"
-        ))
+        match interval {
+            "hour" => sqlx::query_as::<_, AdoptionBucket>(
+                "SELECT date_trunc('hour', ua.created_at) AS bucket_time,
+                        ua.update_id, COUNT(*) AS downloads,
+                        COUNT(DISTINCT ua.device_id) AS unique_devices
+                 FROM update_analytics ua JOIN updates u ON u.id = ua.update_id
+                 WHERE u.project_id = $1
+                   AND ua.created_at >= NOW() - make_interval(days => $2)
+                 GROUP BY bucket_time, ua.update_id ORDER BY bucket_time ASC"
+            ),
+            _ => sqlx::query_as::<_, AdoptionBucket>(
+                "SELECT date_trunc('day', ua.created_at) AS bucket_time,
+                        ua.update_id, COUNT(*) AS downloads,
+                        COUNT(DISTINCT ua.device_id) AS unique_devices
+                 FROM update_analytics ua JOIN updates u ON u.id = ua.update_id
+                 WHERE u.project_id = $1
+                   AND ua.created_at >= NOW() - make_interval(days => $2)
+                 GROUP BY bucket_time, ua.update_id ORDER BY bucket_time ASC"
+            ),
+        }
         .bind(project_id)
         .bind(days)
         .fetch_all(&state.db)

@@ -29,9 +29,10 @@ pub struct UploadAssetResponse {
 
 pub async fn handle_upload_asset(
     State(state): State<AppState>,
-    _auth: RequireAuth,
+    auth: RequireAuth,
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let mut results: Vec<UploadAssetResponse> = Vec::new();
 
     while let Some(field) = multipart
@@ -135,9 +136,10 @@ pub struct PresignUploadResponse {
 
 pub async fn handle_presign_upload(
     State(state): State<AppState>,
-    _auth: RequireAuth,
+    auth: RequireAuth,
     Json(body): Json<PresignUploadRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let s3_key = format!("assets/{}/{}", &body.hash_md5, &body.file_name);
 
     // Check if already exists (dedup)
@@ -352,6 +354,15 @@ pub struct CreateUpdateRequest {
     pub is_critical: bool,
     #[serde(default)]
     pub release_message: String,
+    #[serde(default)]
+    pub linked_flags: Vec<LinkedFlagOverride>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkedFlagOverride {
+    pub flag_id: i64,
+    pub enabled: bool,
 }
 
 fn default_channel() -> String {
@@ -389,6 +400,7 @@ pub async fn handle_create_update(
     auth: RequireAuth,
     Json(body): Json<CreateUpdateRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
 
     if body.platform != "ios" && body.platform != "android" {
@@ -508,6 +520,26 @@ pub async fn handle_create_update(
     )
     .await;
 
+    // Best-effort auto-start: if an active rollout policy exists for this channel,
+    // automatically kick off a rollout execution.
+    if let Err(e) = try_auto_start_execution(
+        &state.db,
+        project_id,
+        update_row.0,
+        &update_row.1,
+        &body.channel,
+        &body.linked_flags,
+    )
+    .await
+    {
+        tracing::warn!(
+            update_id = update_row.0,
+            channel = %body.channel,
+            error = %e,
+            "Auto-start rollout execution failed (non-fatal)"
+        );
+    }
+
     Ok((
         StatusCode::CREATED,
         Json(CreateUpdateResponse {
@@ -551,6 +583,7 @@ pub async fn handle_republish_update(
     Path(update_id): Path<i64>,
     Json(body): Json<RepublishRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
 
     // Fetch the source update
@@ -698,6 +731,7 @@ pub async fn handle_patch_update(
     Path(update_id): Path<i64>,
     Json(body): Json<PatchUpdateRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
 
     if let Some(pct) = body.rollout_percentage {
@@ -765,6 +799,7 @@ pub async fn handle_delete_update(
     auth: RequireAuth,
     Path(update_id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
 
     // Fetch assets belonging to this update (scoped by project)
@@ -830,4 +865,192 @@ pub async fn handle_delete_update(
     .await;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ── Auto-start rollout execution on publish ──────────────────────────
+
+/// If an active rollout policy exists for the given channel, create a rollout
+/// execution automatically. This is best-effort — errors are returned but the
+/// caller should log them and continue rather than failing the upload.
+pub(crate) async fn try_auto_start_execution(
+    db: &sqlx::PgPool,
+    project_id: i64,
+    update_id: i64,
+    update_uuid: &str,
+    channel: &str,
+    linked_flags: &[LinkedFlagOverride],
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Find an active policy for this channel
+    let policy_row = sqlx::query_as::<_, (i64,)>(
+        "SELECT id FROM rollout_policies \
+         WHERE project_id = $1 AND channel = $2 AND is_active = true \
+         LIMIT 1",
+    )
+    .bind(project_id)
+    .bind(channel)
+    .fetch_optional(db)
+    .await?;
+
+    let policy_id = match policy_row {
+        Some((id,)) => id,
+        None => return Ok(()), // No active policy — nothing to do
+    };
+
+    // Get the first stage to determine initial rollout percentage
+    let first_stage = sqlx::query_as::<_, (i32,)>(
+        "SELECT percentage FROM rollout_policy_stages \
+         WHERE policy_id = $1 ORDER BY stage_order LIMIT 1",
+    )
+    .bind(policy_id)
+    .fetch_optional(db)
+    .await?;
+
+    let first_percentage = match first_stage {
+        Some((pct,)) => pct,
+        None => return Ok(()), // Policy has no stages — skip
+    };
+
+    // Use the update's group_id if it has one, otherwise fall back to update_uuid.
+    let group_id: String = sqlx::query_scalar(
+        "SELECT COALESCE(group_id, update_uuid) FROM updates WHERE id = $1",
+    )
+    .bind(update_id)
+    .fetch_one(db)
+    .await?;
+
+    // Create the execution
+    let execution_id: i64 = sqlx::query_scalar(
+        "INSERT INTO rollout_executions \
+         (project_id, policy_id, update_group_id, channel, current_stage, status) \
+         VALUES ($1, $2, $3, $4, 1, 'running') \
+         RETURNING id",
+    )
+    .bind(project_id)
+    .bind(policy_id)
+    .bind(&group_id)
+    .bind(channel)
+    .fetch_one(db)
+    .await?;
+
+    // Link flags to this execution, snapshot current state, and apply override
+    if !linked_flags.is_empty() {
+        for lf in linked_flags {
+            // Snapshot the current per-channel enabled state before we override it
+            let pre_enabled: Option<bool> = sqlx::query_scalar(
+                "SELECT enabled FROM flag_env_settings \
+                 WHERE flag_id = $1 AND channel_name = $2",
+            )
+            .bind(lf.flag_id)
+            .bind(channel)
+            .fetch_optional(db)
+            .await?;
+
+            sqlx::query(
+                "INSERT INTO rollout_execution_flags \
+                 (execution_id, flag_id, link_type, target_enabled, pre_execution_enabled) \
+                 VALUES ($1, $2, 'kill_switch', $3, $4) \
+                 ON CONFLICT (execution_id, flag_id) DO UPDATE \
+                 SET target_enabled = EXCLUDED.target_enabled, \
+                     pre_execution_enabled = EXCLUDED.pre_execution_enabled",
+            )
+            .bind(execution_id)
+            .bind(lf.flag_id)
+            .bind(lf.enabled)
+            .bind(pre_enabled)
+            .execute(db)
+            .await?;
+
+            // Apply the target state: update flag_env_settings to match
+            let rows = sqlx::query(
+                "UPDATE flag_env_settings SET enabled = $1 \
+                 WHERE flag_id = $2 AND channel_name = $3",
+            )
+            .bind(lf.enabled)
+            .bind(lf.flag_id)
+            .bind(channel)
+            .execute(db)
+            .await?;
+
+            if rows.rows_affected() == 0 {
+                sqlx::query(
+                    "INSERT INTO flag_env_settings (flag_id, channel_name, enabled) \
+                     VALUES ($1, $2, $3)",
+                )
+                .bind(lf.flag_id)
+                .bind(channel)
+                .bind(lf.enabled)
+                .execute(db)
+                .await?;
+            }
+
+            // Create a percentage_rollout targeting rule on the flag for this channel
+            let rule_id = crate::handlers::rollout_executions::create_rollout_targeting_rule(
+                db,
+                lf.flag_id,
+                channel,
+                first_percentage,
+                lf.enabled,
+            )
+            .await?;
+
+            // Store the rule ID so we can update/delete it later
+            sqlx::query(
+                "UPDATE rollout_execution_flags SET targeting_rule_id = $1 \
+                 WHERE execution_id = $2 AND flag_id = $3",
+            )
+            .bind(rule_id)
+            .bind(execution_id)
+            .bind(lf.flag_id)
+            .execute(db)
+            .await?;
+
+            // Audit: flag state changed by rollout execution
+            crate::handlers::audit::record_system_audit(
+                db,
+                project_id,
+                "flag.rollout_applied",
+                "feature_flag",
+                Some(lf.flag_id),
+                serde_json::json!({
+                    "executionId": execution_id,
+                    "channel": channel,
+                    "enabled": lf.enabled,
+                    "previousEnabled": pre_enabled,
+                    "percentage": first_percentage,
+                }),
+            )
+            .await;
+        }
+    }
+
+    // Create the first stage history entry
+    sqlx::query(
+        "INSERT INTO rollout_stage_history (execution_id, stage_order, percentage) \
+         VALUES ($1, 1, $2)",
+    )
+    .bind(execution_id)
+    .bind(first_percentage)
+    .execute(db)
+    .await?;
+
+    // Set the update's rollout_percentage to the first stage's target
+    sqlx::query(
+        "UPDATE updates SET rollout_percentage = $1 WHERE id = $2",
+    )
+    .bind(first_percentage)
+    .bind(update_id)
+    .execute(db)
+    .await?;
+
+    tracing::info!(
+        update_id,
+        update_uuid,
+        channel,
+        policy_id,
+        execution_id,
+        first_percentage,
+        "Auto-started rollout execution for published update"
+    );
+
+    Ok(())
 }

@@ -7,6 +7,7 @@ use crate::signing::load_private_key;
 pub mod auth;
 pub mod config;
 pub mod errors;
+pub mod execution_events;
 pub mod handlers;
 pub mod models;
 pub mod multipart;
@@ -81,13 +82,20 @@ async fn main() {
     };
 
     let addr = format!("{}:{}", config.host, config.port);
+    let evaluator_db = db.clone();
+    let execution_events = execution_events::ExecutionEventRegistry::new();
+    let evaluator_events = execution_events.clone();
     let state = AppState {
         db,
         s3,
         config,
         private_key,
+        execution_events,
     };
     let app = create_router(state);
+
+    // Spawn background rollout evaluator (checks every 60s)
+    handlers::rollout_evaluator::spawn_evaluator(evaluator_db, evaluator_events);
 
     tracing::info!("Listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();

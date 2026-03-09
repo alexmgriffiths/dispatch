@@ -36,6 +36,7 @@ pub async fn handle_create_rollback(
     auth: RequireAuth,
     Json(body): Json<CreateRollbackRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
 
     // If rollback_to_update_id is specified, verify it exists within this project
@@ -85,6 +86,60 @@ pub async fn handle_create_rollback(
         }),
     )
     .await;
+
+    // Phase 4: If there's a running rollout execution on this channel, roll it back
+    // and disable kill-switch linked flags
+    let active_executions: Vec<(i64,)> = sqlx::query_as(
+        "SELECT id FROM rollout_executions \
+         WHERE project_id = $1 AND channel = $2 AND status IN ('running', 'paused')",
+    )
+    .bind(project_id)
+    .bind(&body.channel)
+    .fetch_all(&state.db)
+    .await?;
+
+    for (exec_id,) in &active_executions {
+        sqlx::query(
+            "UPDATE rollout_executions \
+             SET status = 'rolled_back', completed_at = NOW(), rollback_reason = 'Manual rollback via update' \
+             WHERE id = $1",
+        )
+        .bind(exec_id)
+        .execute(&state.db)
+        .await?;
+
+        sqlx::query(
+            "UPDATE rollout_stage_history SET completed_at = NOW(), health_status = 'rolled_back' \
+             WHERE execution_id = $1 AND completed_at IS NULL",
+        )
+        .bind(exec_id)
+        .execute(&state.db)
+        .await?;
+
+        // Delete targeting rules created by this execution
+        let _ = crate::handlers::rollout_executions::delete_execution_targeting_rules(
+            &state.db,
+            *exec_id,
+        )
+        .await;
+
+        if let Ok(restored) = crate::handlers::rollout_executions::restore_pre_execution_flags(
+            &state.db,
+            *exec_id,
+            &body.channel,
+            project_id,
+        )
+        .await
+        {
+            if !restored.is_empty() {
+                tracing::info!(
+                    execution_id = exec_id,
+                    flags = ?restored,
+                    "Restored linked flags to pre-execution state on manual update rollback"
+                );
+            }
+        }
+    }
 
     crate::handlers::webhooks::fire_webhooks(
         &state.db,

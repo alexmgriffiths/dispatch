@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { PlatformBadge } from '@/components/ui/platform-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import { GitBranch } from 'lucide-react'
+import { GitBranch, Layers, Upload, Terminal } from 'lucide-react'
 
 interface Props {
   onPublish: (buildId: number) => void
@@ -84,11 +84,7 @@ export default function BuildsList({ onPublish }: Props) {
             ))}
           </div>
         ) : builds.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <div className="text-3xl mb-3">&#9898;</div>
-            <h3 className="font-semibold">No builds yet</h3>
-            <p className="text-sm text-muted-foreground mt-1">Configure your CI/CD pipeline to upload builds here.</p>
-          </div>
+          <BuildsEmptyState />
         ) : (
           <div className="space-y-2">
             {builds.map((b) => (
@@ -139,5 +135,97 @@ export default function BuildsList({ onPublish }: Props) {
         )}
       </div>
     </>
+  )
+}
+
+function BuildsEmptyState() {
+  return (
+    <div className="max-w-6xl mx-auto px-12 py-20">
+      <div className="grid grid-cols-2 gap-16 items-start">
+        {/* Left — Copy */}
+        <div className="space-y-6 pt-8">
+          <h2 className="text-3xl font-bold tracking-tight leading-tight">
+            Upload builds from your CI/CD pipeline
+          </h2>
+          <p className="text-muted-foreground text-base leading-relaxed">
+            Builds are JavaScript bundles exported from your Expo project. Upload them from
+            your CI/CD pipeline using the Dispatch CLI, then publish them as OTA updates
+            to any channel.
+          </p>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Each build captures the runtime version, platform, git branch, and commit — giving
+            you a complete audit trail from code to deployment.
+          </p>
+
+          <div className="space-y-3 pt-1">
+            <div className="flex gap-3">
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold mt-0.5">1</div>
+              <div>
+                <p className="text-sm font-medium">Publish with --no-publish to upload only</p>
+                <pre className="mt-1.5 text-[11px] bg-muted rounded-md px-3 py-2 font-mono overflow-x-auto">
+                  <span className="text-muted-foreground select-none">$ </span>dispatch publish --no-publish</pre>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold mt-0.5">2</div>
+              <div>
+                <p className="text-sm font-medium">Then publish from the dashboard</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Select a build and choose a channel, rollout percentage, and message.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right — Preview card */}
+        <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+          {/* Mini header */}
+          <div className="border-b px-5 py-3 flex items-center gap-2 text-sm text-muted-foreground">
+            <Layers className="h-4 w-4" />
+            <span className="font-medium text-foreground">Builds</span>
+            <span className="ml-auto text-xs">3 builds</span>
+          </div>
+
+          {/* Mock build rows */}
+          <div className="divide-y">
+            {[
+              { version: '49.0.0', platform: 'ios', branch: 'main', commit: 'a3f1b2c', time: '2m ago', assets: 24, published: false },
+              { version: '49.0.0', platform: 'android', branch: 'main', commit: 'a3f1b2c', time: '2m ago', assets: 22, published: false },
+              { version: '48.0.0', platform: 'ios', branch: 'main', commit: '7e2d9f4', time: '3d ago', assets: 24, published: true },
+            ].map((b, i) => (
+              <div key={i} className={cn('px-5 py-3.5 space-y-1.5', b.published && 'opacity-50')}>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold">{b.version}</span>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">{b.platform}</Badge>
+                  <span className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
+                    <GitBranch className="h-2.5 w-2.5" /> {b.branch}
+                  </span>
+                  {b.published && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">published</Badge>
+                  )}
+                  {!b.published && (
+                    <div className="ml-auto flex items-center gap-1 rounded-md bg-primary px-2 py-0.5 text-primary-foreground text-[10px] font-medium">
+                      <Upload className="h-2.5 w-2.5" /> Publish
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground ml-0.5">
+                  <span className="font-mono">{b.commit}</span>
+                  <span>{b.time}</span>
+                  <span>{b.assets} assets</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Summary footer */}
+          <div className="border-t bg-muted/30 px-5 py-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">CLI command</p>
+            <pre className="text-xs font-mono text-muted-foreground">
+              <span className="select-none">$ </span>dispatch publish --no-publish
+            </pre>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

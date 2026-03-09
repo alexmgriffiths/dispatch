@@ -11,6 +11,15 @@ pub async fn handle_proxy_asset(
     State(state): State<AppState>,
     Path(key): Path<String>,
 ) -> Result<Response, AppError> {
+    // Validate the key to prevent path traversal
+    if key.contains("..") || key.starts_with('/') {
+        return Err(AppError::BadRequest("Invalid asset key".into()));
+    }
+    // Only allow serving from assets/ or builds/ prefixes
+    if !key.starts_with("assets/") && !key.starts_with("builds/") {
+        return Err(AppError::BadRequest("Invalid asset key".into()));
+    }
+
     let result = state
         .s3
         .get_object()

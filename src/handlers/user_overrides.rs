@@ -39,6 +39,7 @@ pub async fn handle_create_user_override(
     auth: RequireAuth,
     Json(body): Json<CreateUserOverrideRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
     let user_id = body.user_id.trim().to_string();
     let branch_name = body.branch_name.trim().to_string();
@@ -96,6 +97,7 @@ pub async fn handle_delete_user_override(
     auth: RequireAuth,
     Path(id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
 
     let result = sqlx::query("DELETE FROM user_overrides WHERE project_id = $1 AND id = $2")

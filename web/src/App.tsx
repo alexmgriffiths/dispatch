@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Login from './components/Login'
+import LandingPage from './components/LandingPage'
 import Onboarding from './components/Onboarding'
 import UpdatesList from './components/UpdatesList'
 import BuildsList from './components/BuildsList'
@@ -9,10 +10,14 @@ import Adoption from './components/Adoption'
 import Settings from './components/Settings'
 import GettingStarted from './components/GettingStarted'
 import Playbooks from './components/Playbooks'
+import FeatureFlags from './components/FeatureFlags'
+import Contexts from './components/Contexts'
+import RolloutPolicies from './components/RolloutPolicies'
+import Telemetry from './components/Telemetry'
 import DispatchLogo from './components/DispatchLogo'
 import WelcomeModal, { WELCOME_SEEN_KEY } from './components/WelcomeModal'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { getToken, clearToken, logout, getSetupStatus, listProjects, listUpdates, getProjectSlug, setProjectSlug, clearProjectSlug } from './api/client'
+import { getToken, clearToken, logout, getSetupStatus, listProjects, listUpdates, getProjectSlug, setProjectSlug, clearProjectSlug, getMe } from './api/client'
 import type { ProjectRecord } from './api/client'
 import ProjectSwitcher from './components/ProjectSwitcher'
 import { Button } from '@/components/ui/button'
@@ -27,12 +32,48 @@ import {
   BookOpen,
   Rocket,
   LogOut,
+  Flag,
+  Users,
+  Shield,
+  Zap,
+  Activity,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type Page = 'updates' | 'builds' | 'publish' | 'adoption' | 'audit' | 'settings' | 'guide' | 'playbooks'
+type Page = 'updates' | 'builds' | 'publish' | 'adoption' | 'telemetry' | 'audit' | 'settings' | 'flags' | 'contexts' | 'guide' | 'playbooks' | 'rollouts' | 'policies'
 
 const GUIDE_DISMISSED_KEY = 'dispatch-guide-dismissed'
+
+const PAGE_PATHS: Record<Page, string> = {
+  updates: '/releases',
+  builds: '/builds',
+  publish: '/publish',
+  adoption: '/adoption',
+  telemetry: '/telemetry',
+  audit: '/audit-log',
+  settings: '/settings',
+  flags: '/flags',
+  contexts: '/contexts',
+  guide: '/getting-started',
+  playbooks: '/playbooks',
+  rollouts: '/rollouts',
+  policies: '/policies',
+}
+const PATH_TO_PAGE: Record<string, Page> = Object.fromEntries(
+  Object.entries(PAGE_PATHS).map(([page, path]) => [path, page as Page])
+) as Record<string, Page>
+
+function pageFromPath(): Page | null {
+  const path = window.location.pathname
+  if (path.startsWith('/flags/')) return 'flags'
+  return PATH_TO_PAGE[path] ?? null
+}
+
+function flagKeyFromPath(): string | null {
+  const path = window.location.pathname
+  if (path.startsWith('/flags/')) return decodeURIComponent(path.slice('/flags/'.length))
+  return null
+}
 
 const USE_MOCK = import.meta.env.VITE_MOCK === 'true'
 
@@ -40,12 +81,41 @@ function App() {
   const [authed, setAuthed] = useState(() => USE_MOCK || !!getToken())
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null)
   const [showSetup, setShowSetup] = useState(false)
-  const [page, setPage] = useState<Page>(() => localStorage.getItem(GUIDE_DISMISSED_KEY) ? 'updates' : 'guide')
+  const [page, setPageState] = useState<Page>(() => {
+    const fromUrl = pageFromPath()
+    if (fromUrl) return fromUrl
+    const defaultPage = localStorage.getItem(GUIDE_DISMISSED_KEY) ? 'updates' : 'guide'
+    // Sync URL on first load when landing on /
+    window.history.replaceState(null, '', PAGE_PATHS[defaultPage])
+    return defaultPage
+  })
+  const setPage = useCallback((p: Page) => {
+    setPageState(p)
+    setInitialFlagKey(null)
+    const path = PAGE_PATHS[p]
+    if (window.location.pathname !== path) {
+      window.history.pushState(null, '', path)
+    }
+  }, [])
+
+  useEffect(() => {
+    const onPopState = () => {
+      const p = pageFromPath()
+      if (p) setPageState(p)
+      setInitialFlagKey(flagKeyFromPath())
+      setPathname(window.location.pathname)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
   const [publishBuildId, setPublishBuildId] = useState<number | null>(null)
+  const [initialFlagKey, setInitialFlagKey] = useState<string | null>(() => flagKeyFromPath())
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem(WELCOME_SEEN_KEY))
   const [projects, setProjects] = useState<ProjectRecord[]>([])
   const [currentProjectSlug, setCurrentProjectSlug] = useState<string>(getProjectSlug() || '')
   const [projectKey, setProjectKey] = useState(0)
+  const [pathname, setPathname] = useState(() => window.location.pathname)
+  const [projectRole, setProjectRole] = useState<string>('admin')
 
   useEffect(() => {
     if (!authed && !USE_MOCK) {
@@ -75,6 +145,10 @@ function App() {
           }
         })
         .catch(() => {})
+      // Fetch the user's project role
+      getMe().then((me) => {
+        setProjectRole(me.projectRole ?? 'admin')
+      }).catch(() => {})
     }
   }, [authed])
 
@@ -82,6 +156,7 @@ function App() {
     setProjectSlug(slug)
     setCurrentProjectSlug(slug)
     setProjectKey((k) => k + 1)
+    getMe().then((me) => setProjectRole(me.projectRole ?? 'admin')).catch(() => {})
   }
 
   async function handleLogout() {
@@ -92,6 +167,7 @@ function App() {
     setProjects([])
     setCurrentProjectSlug('')
     setNeedsSetup(null)
+    window.history.replaceState(null, '', '/')
     getSetupStatus()
       .then((s) => setNeedsSetup(s.needsSetup))
       .catch(() => setNeedsSetup(false))
@@ -115,7 +191,16 @@ function App() {
         }} />
       )
     }
-    return <Login onLogin={() => setAuthed(true)} onSetup={() => setShowSetup(true)} />
+    if (pathname === '/login') {
+      return <Login onLogin={() => { setAuthed(true); window.history.replaceState(null, '', '/releases') }} onSetup={() => setShowSetup(true)} />
+    }
+    return (
+      <LandingPage
+        onSignIn={() => { window.history.pushState(null, '', '/login'); setPathname('/login') }}
+        onSetup={() => setShowSetup(true)}
+        needsSetup={needsSetup ?? false}
+      />
+    )
   }
 
   function handlePublishBuild(buildId: number) {
@@ -128,16 +213,33 @@ function App() {
     { page: 'playbooks', label: 'Playbooks', icon: <BookOpen className="h-4 w-4" /> },
   ]
 
-  const navItems: { page: Page; label: string; icon: React.ReactNode; onClick?: () => void }[] = [
+  const otaNavItems: { page: Page; label: string; icon: React.ReactNode; onClick?: () => void }[] = [
     { page: 'updates', label: 'Releases', icon: <LayoutGrid className="h-4 w-4" /> },
     { page: 'builds', label: 'Builds', icon: <Layers className="h-4 w-4" /> },
-    { page: 'publish', label: 'Publish', icon: <Upload className="h-4 w-4" />, onClick: () => { setPublishBuildId(null); setPage('publish') } },
+    { page: 'publish', label: 'New Release', icon: <Upload className="h-4 w-4" />, onClick: () => { setPublishBuildId(null); setPage('publish') } },
   ]
 
-  const secondaryNavItems: { page: Page; label: string; icon: React.ReactNode }[] = [
+  const rolloutsNavItems: { page: Page; label: string; icon: React.ReactNode }[] = [
+    { page: 'rollouts', label: 'Rollouts', icon: <Zap className="h-4 w-4" /> },
+    { page: 'policies', label: 'Policies', icon: <Shield className="h-4 w-4" /> },
+  ]
+
+  const flagsNavItems: { page: Page; label: string; icon: React.ReactNode }[] = [
+    { page: 'flags', label: 'Feature Flags', icon: <Flag className="h-4 w-4" /> },
+    { page: 'contexts', label: 'Contexts', icon: <Users className="h-4 w-4" /> },
+  ]
+
+  const insightsNavItems: { page: Page; label: string; icon: React.ReactNode }[] = [
     { page: 'adoption', label: 'Adoption', icon: <BarChart3 className="h-4 w-4" /> },
+    { page: 'telemetry', label: 'Telemetry', icon: <Activity className="h-4 w-4" /> },
+  ]
+
+  const isAdmin = projectRole === 'admin'
+  const isViewer = projectRole === 'viewer'
+
+  const secondaryNavItems: { page: Page; label: string; icon: React.ReactNode }[] = [
     { page: 'audit', label: 'Audit Log', icon: <FileText className="h-4 w-4" /> },
-    { page: 'settings', label: 'Settings', icon: <SettingsIcon className="h-4 w-4" /> },
+    ...(isAdmin ? [{ page: 'settings' as Page, label: 'Settings', icon: <SettingsIcon className="h-4 w-4" /> }] : []),
   ]
 
   return (
@@ -184,10 +286,62 @@ function App() {
 
           <Separator className="my-3" />
 
-          {navItems.map((item) => (
+          <span className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">OTA Updates</span>
+          {otaNavItems.map((item) => (
             <button
               key={item.page}
               onClick={item.onClick ?? (() => setPage(item.page))}
+              className={cn(
+                'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer',
+                page === item.page
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+              )}
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
+
+          <span className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Experimentation</span>
+          {flagsNavItems.map((item) => (
+            <button
+              key={item.page}
+              onClick={() => setPage(item.page)}
+              className={cn(
+                'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer',
+                page === item.page
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+              )}
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
+
+          <span className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Progressive Delivery</span>
+          {rolloutsNavItems.map((item) => (
+            <button
+              key={item.page}
+              onClick={() => setPage(item.page)}
+              className={cn(
+                'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer',
+                page === item.page
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+              )}
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
+
+          <span className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Insights</span>
+          {insightsNavItems.map((item) => (
+            <button
+              key={item.page}
+              onClick={() => setPage(item.page)}
               className={cn(
                 'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer',
                 page === item.page
@@ -239,10 +393,28 @@ function App() {
           />
         )}
         {page === 'adoption' && <Adoption />}
+        {page === 'telemetry' && <Telemetry onNavigate={(p) => {
+          if (p.startsWith('flags:')) {
+            const flagKey = p.slice('flags:'.length)
+            setInitialFlagKey(flagKey)
+            setPageState('flags')
+            window.history.pushState(null, '', `/flags/${encodeURIComponent(flagKey)}`)
+          } else {
+            setPage(p as Page)
+          }
+        }} />}
         {page === 'audit' && <AuditLog />}
         {page === 'settings' && <Settings />}
+        {page === 'flags' && <FeatureFlags initialFlagKey={initialFlagKey} onFlagSelected={(key) => {
+          setInitialFlagKey(key)
+          const path = key ? `/flags/${encodeURIComponent(key)}` : '/flags'
+          if (window.location.pathname !== path) window.history.pushState(null, '', path)
+        }} />}
+        {page === 'contexts' && <Contexts />}
         {page === 'guide' && <GettingStarted projectUuid={projects.find(p => p.slug === currentProjectSlug)?.uuid} onNavigate={(p) => setPage(p as Page)} onDismiss={() => { localStorage.setItem(GUIDE_DISMISSED_KEY, '1'); setPage('updates') }} />}
         {page === 'playbooks' && <Playbooks onNavigate={(p) => setPage(p as Page)} />}
+        {page === 'rollouts' && <RolloutPolicies defaultTab="executions" />}
+        {page === 'policies' && <RolloutPolicies defaultTab="policies" />}
       </main>
     </div>
     </TooltipProvider>

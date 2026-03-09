@@ -115,6 +115,7 @@ pub async fn handle_create_project(
         user_id: Some(user_id),
         api_key_id: None,
         project_id: Some(project.id),
+        role: crate::auth::Role::Admin,
     };
     record_audit(
         &state.db,
@@ -138,17 +139,15 @@ pub async fn handle_delete_project(
     let user_id = auth
         .user_id
         .ok_or_else(|| AppError::Unauthorized("Only users can delete projects".into()))?;
+    auth.require_admin()?;
 
-    // Verify user is admin of this project
     let project_id = sqlx::query_scalar::<_, i64>(
-        "SELECT p.id FROM projects p
-         JOIN project_members pm ON pm.project_id = p.id
-         WHERE p.slug = $1 AND pm.user_id = $2 AND pm.role = 'admin'",
+        "SELECT id FROM projects WHERE slug = $1",
     )
     .bind(&slug)
     .fetch_optional(&state.db)
     .await?
-    .ok_or_else(|| AppError::NotFound("Project not found or insufficient permissions".into()))?;
+    .ok_or_else(|| AppError::NotFound("Project not found".into()))?;
 
     // Count remaining projects for this user
     let project_count = sqlx::query_scalar::<_, i64>(

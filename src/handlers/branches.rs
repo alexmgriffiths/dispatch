@@ -38,6 +38,7 @@ pub async fn handle_create_branch(
     auth: RequireAuth,
     Json(body): Json<CreateBranchRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
     let name = body.name.trim().to_string();
     if name.is_empty() {
@@ -84,6 +85,7 @@ pub async fn handle_delete_branch(
     auth: RequireAuth,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
 
     let channel_count = sqlx::query_scalar::<_, i64>(
@@ -160,6 +162,7 @@ pub async fn handle_create_channel(
     auth: RequireAuth,
     Json(body): Json<CreateChannelRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
     let name = body.name.trim().to_string();
     let branch_name = body.branch_name.trim().to_string();
@@ -237,6 +240,7 @@ pub async fn handle_patch_channel(
     Path(name): Path<String>,
     Json(body): Json<PatchChannelRequest>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
 
     if let Some(pct) = body.rollout_percentage {
@@ -287,6 +291,7 @@ pub async fn handle_delete_channel(
     auth: RequireAuth,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
+    auth.require_editor()?;
     let project_id = auth.require_project()?;
 
     let result = sqlx::query("DELETE FROM channels WHERE project_id = $1 AND name = $2")
