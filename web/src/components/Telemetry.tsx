@@ -15,6 +15,8 @@ import {
   ArrowDownRight,
   Minus,
   Loader2,
+  BarChart3,
+  Zap,
 } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import {
@@ -130,6 +132,10 @@ export default function Telemetry({ onNavigate }: { onNavigate?: (page: string) 
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : timeseries.length === 0 && impacts.length === 0 && events.length === 0 ? (
+        <div className="flex-1 overflow-y-auto">
+          <TelemetryEmptyState />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -281,6 +287,102 @@ export default function Telemetry({ onNavigate }: { onNavigate?: (page: string) 
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Empty state ─────────────────────────────────────────────────────────
+
+function TelemetryEmptyState() {
+  return (
+    <div className="max-w-6xl mx-auto px-12 py-20">
+      <div className="grid grid-cols-2 gap-16 items-start">
+        {/* Left — Copy */}
+        <div className="space-y-6 pt-8">
+          <h2 className="text-3xl font-bold tracking-tight leading-tight">
+            Understand the health impact of every change
+          </h2>
+          <p className="text-muted-foreground text-base leading-relaxed">
+            Telemetry correlates error rates, crash-free rates, and flag evaluations across
+            your updates and feature flags — so you can see exactly which variation or update
+            version is causing issues before they spread.
+          </p>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Data flows in automatically from the health reporter SDK. As devices report
+            errors and evaluations, anomalies are detected and attributed to specific flags
+            and update versions.
+          </p>
+        </div>
+
+        {/* Right — Preview card */}
+        <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+          {/* Mini header */}
+          <div className="border-b px-5 py-3 flex items-center gap-2 text-sm text-muted-foreground">
+            <BarChart3 className="h-4 w-4" />
+            <span className="font-medium text-foreground">Telemetry</span>
+            <span className="ml-auto text-xs">14 days</span>
+          </div>
+
+          {/* Mock summary cards */}
+          <div className="px-5 py-4 grid grid-cols-2 gap-3">
+            <div className="rounded-lg border p-3">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Error rate</span>
+              <div className="text-lg font-bold mt-1">0.42%</div>
+            </div>
+            <div className="rounded-lg border border-green-500/30 p-3">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Crash-free</span>
+              <div className="text-lg font-bold text-green-600 mt-1">99.87%</div>
+            </div>
+          </div>
+
+          {/* Mock correlated event */}
+          <div className="px-5 pb-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Correlated events</p>
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                <span className="text-xs font-medium">Error spike in new-checkout = true</span>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                <span>2h ago</span>
+                <span>&middot;</span>
+                <span>342 devices</span>
+                <span>&middot;</span>
+                <span className="inline-flex items-center gap-1">
+                  <Flag className="h-2.5 w-2.5" /> new-checkout
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Mock impact row */}
+          <div className="border-t px-5 py-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Flag impact</p>
+            <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-1.5">
+                <Flag className="h-3 w-3 text-muted-foreground" />
+                <span className="font-medium">new-checkout</span>
+                <span className="font-mono bg-muted px-1 py-0.5 rounded text-[10px]">true</span>
+              </div>
+              <span className="text-muted-foreground ml-auto">1.2%</span>
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-destructive">
+                <ArrowUpRight className="h-3 w-3" /> +0.8%
+              </span>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="border-t bg-muted/30 px-5 py-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">Insights</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>Anomaly detection</span>
+              <span>Flag correlation</span>
+              <span>Update attribution</span>
+              <span>Cross-channel</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

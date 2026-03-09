@@ -37,7 +37,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { InfoTip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { Plus, Trash2, ArrowRight, Copy, Check, ChevronDown, Bell, Zap, Globe } from 'lucide-react'
+import { Plus, Trash2, ArrowRight, Copy, Check, ChevronDown, Bell, Zap, Globe, Key, Shield, Terminal } from 'lucide-react'
 
 const ALL_EVENTS = [
   'build.uploaded',
@@ -511,12 +511,70 @@ export default function Settings() {
                 ))}
               </div>
             ) : apiKeys.length === 0 && !showApiKeyForm ? (
-              <div className="flex flex-col items-center py-16 text-center">
-                <div className="text-3xl mb-3">&#128273;</div>
-                <h3 className="font-semibold">No API keys</h3>
-                <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-                  Create an API key for CI/CD pipelines and programmatic access. Use it as a Bearer token in the Authorization header.
-                </p>
+              <div className="max-w-5xl mx-auto px-8 py-16">
+                <div className="grid grid-cols-2 gap-14 items-start">
+                  {/* Left — Copy */}
+                  <div className="space-y-5 pt-4">
+                    <h2 className="text-2xl font-bold tracking-tight leading-tight">
+                      Authenticate your CI/CD pipeline
+                    </h2>
+                    <p className="text-muted-foreground text-sm leading-relaxed">
+                      API keys let your CI/CD pipeline publish OTA updates, manage branches, and
+                      interact with the Dispatch API programmatically. Each key is scoped to this
+                      project and can be revoked at any time.
+                    </p>
+                    <p className="text-muted-foreground text-xs leading-relaxed">
+                      Pass the key as a Bearer token in the <code className="text-xs bg-muted px-1 py-0.5 rounded">Authorization</code> header,
+                      or use <code className="text-xs bg-muted px-1 py-0.5 rounded">dispatch login --token</code> in your CI environment.
+                    </p>
+                    <Button size="lg" onClick={() => setShowApiKeyForm(true)}>
+                      <Plus className="mr-2 h-4 w-4" /> Create your first key
+                    </Button>
+                  </div>
+
+                  {/* Right — Preview card */}
+                  <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+                    {/* Mini header */}
+                    <div className="border-b px-5 py-3 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Key className="h-4 w-4" />
+                      <span className="font-medium text-foreground">API Keys</span>
+                      <span className="ml-auto text-xs">2 keys</span>
+                    </div>
+
+                    {/* Mock key rows */}
+                    <div className="divide-y">
+                      <div className="px-5 py-3.5">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-semibold">CI Production</span>
+                          <span className="inline-flex items-center rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] font-medium text-green-700">active</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <code className="bg-muted px-1.5 py-0.5 rounded">dsp_sk_7f3a...</code>
+                          <span>Created Mar 1, 2026</span>
+                          <span>Last used 2h ago</span>
+                        </div>
+                      </div>
+                      <div className="px-5 py-3.5 opacity-60">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-semibold">Local Dev</span>
+                          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">revoked</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <code className="bg-muted px-1.5 py-0.5 rounded">dsp_sk_2e9b...</code>
+                          <span>Created Feb 14, 2026</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Usage snippet */}
+                    <div className="border-t bg-muted/30 px-5 py-3">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Usage</p>
+                      <pre className="text-xs font-mono text-muted-foreground leading-relaxed"><code>{`# In your CI pipeline
+export DISPATCH_TOKEN="dsp_sk_..."
+dispatch publish --channel production`}</code></pre>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">

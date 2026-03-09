@@ -5,6 +5,13 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import {
+  Smartphone,
+  TrendingUp,
+  Download,
+  GitBranch,
+  BarChart3,
+} from 'lucide-react'
 
 export default function Adoption() {
   const [data, setData] = useState<AdoptionResponse | null>(null)
@@ -128,7 +135,9 @@ export default function Adoption() {
               </div>
             </div>
           </>
-        ) : !data ? null : (
+        ) : !data ? null : data.currentAdoption.length === 0 && dailyTotals.length === 0 ? (
+          <AdoptionEmptyState />
+        ) : (
           <>
             {/* Summary stats */}
             <div className="grid grid-cols-3 gap-4">
@@ -220,6 +229,103 @@ export default function Adoption() {
         )}
       </div>
     </>
+  )
+}
+
+function AdoptionEmptyState() {
+  return (
+    <div className="max-w-6xl mx-auto px-12 py-20">
+      <div className="grid grid-cols-2 gap-16 items-start">
+        {/* Left — Copy */}
+        <div className="space-y-6 pt-8">
+          <h2 className="text-3xl font-bold tracking-tight leading-tight">
+            See which versions your users are running
+          </h2>
+          <p className="text-muted-foreground text-base leading-relaxed">
+            Adoption tracks how OTA updates spread across your user base. See exactly how many
+            devices are running each version, which channels they're on, and how quickly updates
+            are being downloaded.
+          </p>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Data appears automatically as devices download updates from the manifest endpoint.
+            Publish your first OTA update to start tracking adoption.
+          </p>
+        </div>
+
+        {/* Right — Preview card */}
+        <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+          {/* Mini header */}
+          <div className="border-b px-5 py-3 flex items-center gap-2 text-sm text-muted-foreground">
+            <BarChart3 className="h-4 w-4" />
+            <span className="font-medium text-foreground">Adoption</span>
+            <span className="ml-auto text-xs">30 days</span>
+          </div>
+
+          {/* Mock summary stats */}
+          <div className="px-5 py-4 grid grid-cols-3 gap-3">
+            <div className="rounded-lg border p-2.5">
+              <div className="text-lg font-bold">12,483</div>
+              <span className="text-[10px] text-muted-foreground">Active devices</span>
+            </div>
+            <div className="rounded-lg border p-2.5">
+              <div className="text-lg font-bold">4</div>
+              <span className="text-[10px] text-muted-foreground">Updates tracked</span>
+            </div>
+            <div className="rounded-lg border p-2.5">
+              <div className="text-lg font-bold">8,291</div>
+              <span className="text-[10px] text-muted-foreground">Downloads</span>
+            </div>
+          </div>
+
+          {/* Mock stacked bar */}
+          <div className="px-5 pb-2">
+            <div className="rounded-lg overflow-hidden flex h-6">
+              <div className="bg-primary" style={{ width: '55%' }} />
+              <div className="bg-blue-500" style={{ width: '25%' }} />
+              <div className="bg-violet-500" style={{ width: '15%' }} />
+              <div className="bg-emerald-500" style={{ width: '5%' }} />
+            </div>
+          </div>
+
+          {/* Mock adoption rows */}
+          <div className="divide-y mx-5 mb-4 border rounded-lg overflow-hidden">
+            {[
+              { version: '49.0.0', channel: 'production', branch: 'main', devices: 6865, pct: 55 },
+              { version: '48.2.0', channel: 'production', branch: 'main', devices: 3121, pct: 25 },
+              { version: '49.0.0', channel: 'staging', branch: 'feature/nav', devices: 1872, pct: 15 },
+            ].map((u, i) => (
+              <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+                <div className={cn('h-2.5 w-2.5 rounded-sm shrink-0', ['bg-primary', 'bg-blue-500', 'bg-violet-500'][i])} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className="font-medium">v{u.version}</span>
+                    <span className="inline-flex items-center rounded-full border px-1.5 py-0 text-[10px]">{u.channel}</span>
+                    <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                      <GitBranch className="h-2.5 w-2.5" /> {u.branch}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="text-xs font-semibold">{u.devices.toLocaleString()}</span>
+                  <span className="text-[10px] text-muted-foreground ml-1">{u.pct}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Footer */}
+          <div className="border-t bg-muted/30 px-5 py-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">Metrics</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>Version distribution</span>
+              <span>Download trends</span>
+              <span>Channel breakdown</span>
+              <span>Platform split</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 

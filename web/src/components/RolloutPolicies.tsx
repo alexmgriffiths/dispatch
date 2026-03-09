@@ -1685,13 +1685,13 @@ export default function RolloutPolicies({ defaultTab = 'executions' }: { default
       {!loading && tab === 'executions' && (
         <div className="space-y-2">
           {filteredExecutions.length === 0 ? (
-            <div className="rounded-lg border bg-card p-12 text-center">
-              <Zap className="h-10 w-10 mx-auto text-muted-foreground/30" />
-              <h3 className="mt-3 text-sm font-semibold">No rollouts</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Start a rollout from the Releases page or create a policy first.
-              </p>
-            </div>
+            search.trim() ? (
+              <div className="flex flex-col items-center justify-center py-24">
+                <p className="text-sm text-muted-foreground">No rollouts match your search.</p>
+              </div>
+            ) : (
+              <ExecutionsEmptyState />
+            )
           ) : (
             filteredExecutions.map((exec) => (
               <button
@@ -1821,16 +1821,13 @@ export default function RolloutPolicies({ defaultTab = 'executions' }: { default
       {!loading && tab === 'policies' && (
         <div className="space-y-2">
           {filteredPolicies.length === 0 ? (
-            <div className="rounded-lg border bg-card p-12 text-center">
-              <Shield className="h-10 w-10 mx-auto text-muted-foreground/30" />
-              <h3 className="mt-3 text-sm font-semibold">No policies</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Create a rollout policy to automate progressive delivery.
-              </p>
-              <Button className="mt-4" onClick={() => setShowCreatePolicy(true)}>
-                <Plus className="h-4 w-4 mr-1.5" /> Create Policy
-              </Button>
-            </div>
+            search.trim() ? (
+              <div className="flex flex-col items-center justify-center py-24">
+                <p className="text-sm text-muted-foreground">No policies match your search.</p>
+              </div>
+            ) : (
+              <PoliciesEmptyState onCreatePolicy={() => setShowCreatePolicy(true)} />
+            )
           ) : (
             filteredPolicies.map((policy) => (
               <button
@@ -2006,5 +2003,202 @@ function ExecDeltaBadge({ value, suffix = '', invert = false }: { value: number;
       {isPositive ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
       {isPositive ? '+' : ''}{value}{suffix}
     </span>
+  )
+}
+
+function ExecutionsEmptyState() {
+  return (
+    <div className="max-w-6xl mx-auto px-12 py-20">
+      <div className="grid grid-cols-2 gap-16 items-start">
+        {/* Left — Copy */}
+        <div className="space-y-6 pt-8">
+          <h2 className="text-3xl font-bold tracking-tight leading-tight">
+            Progressive delivery with automated rollouts
+          </h2>
+          <p className="text-muted-foreground text-base leading-relaxed">
+            Rollouts gradually release OTA updates to your users using the policies you define.
+            Each rollout tracks its own health metrics — crash rates, error rates, and adoption —
+            and can automatically pause or roll back if something goes wrong.
+          </p>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Start a rollout when publishing an update, or trigger one from the Releases page.
+            Linked feature flags are automatically managed as the rollout progresses through
+            its stages.
+          </p>
+        </div>
+
+        {/* Right — Preview card */}
+        <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+          {/* Mini header */}
+          <div className="border-b px-5 py-3 flex items-center gap-2 text-sm text-muted-foreground">
+            <Zap className="h-4 w-4" />
+            <span className="font-medium text-foreground">Rollouts</span>
+            <span className="ml-auto text-xs">2 rollouts</span>
+          </div>
+
+          {/* Mock rollout rows */}
+          <div className="divide-y">
+            {/* Active rollout */}
+            <div className="px-5 py-3.5 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                <span className="text-sm font-medium">update-49.0.0-a3f1b2c</span>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-blue-300 text-blue-700">active</Badge>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground ml-4">
+                <span>Canary Deploy</span>
+                <span>&middot;</span>
+                <span>Stage 2 of 3</span>
+                <span>&middot;</span>
+                <span className="inline-flex items-center gap-1">
+                  <Flag className="h-2.5 w-2.5" /> 2 flags linked
+                </span>
+              </div>
+              <div className="ml-4 flex items-center gap-2">
+                <div className="h-1.5 w-32 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full rounded-full bg-blue-500" style={{ width: '50%' }} />
+                </div>
+                <span className="text-[10px] font-mono text-muted-foreground">50%</span>
+                <span className="text-[10px] text-muted-foreground ml-2">
+                  <span className="inline-flex items-center gap-0.5"><Activity className="h-2.5 w-2.5 text-green-500" /> 99.8% crash-free</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Completed rollout */}
+            <div className="px-5 py-3.5 space-y-2 opacity-60">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                <span className="text-sm font-medium">update-48.0.0-7e2d9f4</span>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-green-300 text-green-700">completed</Badge>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground ml-5">
+                <span>Production Rollout</span>
+                <span>&middot;</span>
+                <span>3d ago</span>
+              </div>
+              <div className="ml-5 flex items-center gap-2">
+                <div className="h-1.5 w-32 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full rounded-full bg-green-500" style={{ width: '100%' }} />
+                </div>
+                <span className="text-[10px] font-mono text-muted-foreground">100%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="border-t bg-muted/30 px-5 py-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">Capabilities</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>Multi-stage rollouts</span>
+              <span>Auto-pause on errors</span>
+              <span>Feature flag sync</span>
+              <span>Instant rollback</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PoliciesEmptyState({ onCreatePolicy }: { onCreatePolicy: () => void }) {
+  return (
+    <div className="max-w-6xl mx-auto px-12 py-20">
+      <div className="grid grid-cols-2 gap-16 items-start">
+        {/* Left — Copy */}
+        <div className="space-y-6 pt-8">
+          <h2 className="text-3xl font-bold tracking-tight leading-tight">
+            Define how updates reach your users
+          </h2>
+          <p className="text-muted-foreground text-base leading-relaxed">
+            Rollout policies are reusable templates that control how OTA updates are delivered.
+            Define stages with percentage targets, wait durations, and health gates — then
+            apply the same policy every time you ship.
+          </p>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Link feature flags to a policy so they're automatically enabled as the rollout
+            progresses and reverted if the rollout is paused or rolled back.
+          </p>
+          <div className="flex items-center gap-3 mt-2">
+            <Button size="lg" onClick={onCreatePolicy}>
+              <Plus className="mr-2 h-4 w-4" /> Create your first policy
+            </Button>
+          </div>
+        </div>
+
+        {/* Right — Preview card */}
+        <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+          {/* Mini header */}
+          <div className="border-b px-5 py-3 flex items-center gap-2 text-sm text-muted-foreground">
+            <Shield className="h-4 w-4" />
+            <span className="font-medium text-foreground">Policies</span>
+            <span>/</span>
+            <span>Canary Deploy</span>
+          </div>
+
+          {/* Mock policy detail */}
+          <div className="px-5 py-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Stages</span>
+              <Badge variant="secondary" className="text-[10px]">production</Badge>
+            </div>
+
+            {/* Stage cards */}
+            <div className="space-y-2">
+              {[
+                { pct: 5, wait: '1 hour', label: 'Canary' },
+                { pct: 25, wait: '4 hours', label: 'Early access' },
+                { pct: 100, wait: null, label: 'General availability' },
+              ].map((stage, i) => (
+                <div key={i} className="rounded-lg border p-3 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+                        {i + 1}
+                      </div>
+                      <span className="text-xs font-medium">{stage.label}</span>
+                    </div>
+                    <span className="text-xs font-mono text-muted-foreground">{stage.pct}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div className="h-full rounded-full bg-primary/60" style={{ width: `${stage.pct}%` }} />
+                  </div>
+                  {stage.wait && (
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <Clock className="h-2.5 w-2.5" />
+                      Wait {stage.wait} before advancing
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Linked flags */}
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium">Linked flags</span>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-mono">
+                  <Flag className="h-2.5 w-2.5 text-muted-foreground" /> new-checkout
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-mono">
+                  <Flag className="h-2.5 w-2.5 text-muted-foreground" /> redesigned-nav
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="border-t bg-muted/30 px-5 py-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">Health gates</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>Crash rate &lt; 2%</span>
+              <span>Error rate &lt; 5%</span>
+              <span>Auto-pause on breach</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

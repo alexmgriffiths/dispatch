@@ -11,11 +11,14 @@ import {
   Upload,
   Users,
   Globe,
-  Smartphone,
   Percent,
-  Terminal,
   Check,
   ArrowRight,
+  Bug,
+  Activity,
+  Eye,
+  Layers,
+  AlertTriangle,
 } from 'lucide-react'
 
 interface Props {
@@ -54,14 +57,14 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
       {/* Hero */}
       <section className="max-w-6xl mx-auto px-6 pt-24 pb-20">
         <div className="max-w-3xl">
-          <Badge variant="secondary" className="mb-4 text-xs">OTA Updates + Feature Flags</Badge>
+          <Badge variant="secondary" className="mb-4 text-xs">OTA Updates + Feature Flags + Progressive Delivery</Badge>
           <h1 className="text-5xl font-bold tracking-tight leading-[1.1] mb-6">
-            Ship mobile updates<br />without the app store
+            Ship, flag, and observe<br />your mobile releases
           </h1>
           <p className="text-xl text-muted-foreground leading-relaxed mb-8 max-w-2xl">
-            Dispatch is a platform for Expo & React Native that combines
-            over-the-air updates with feature flags. Push fixes in seconds, roll out
-            features gradually, and skip the app store for every update.
+            Dispatch is the release platform for Expo & React Native. Push OTA updates
+            in seconds, control features with flags, automate rollouts with health gates,
+            and monitor errors — all from one dashboard.
           </p>
           <div className="flex items-center gap-4">
             {needsSetup ? (
@@ -85,17 +88,17 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
             </div>
             <div className="flex items-center gap-4 text-muted-foreground">
               <span className="text-foreground font-medium">Releases</span>
-              <span>Builds</span>
               <span>Feature Flags</span>
-              <span>Adoption</span>
+              <span>Rollouts</span>
+              <span>Observe</span>
             </div>
           </div>
           <div className="grid grid-cols-3 divide-x">
-            {/* Release card */}
+            {/* Release + rollout card */}
             <div className="p-5 space-y-3">
               <div className="flex items-center gap-2">
                 <Rocket className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">Latest release</span>
+                <span className="text-sm font-medium">Active rollout</span>
               </div>
               <div className="rounded-lg border p-3 space-y-2">
                 <div className="flex items-center gap-2">
@@ -104,13 +107,20 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
                 </div>
                 <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                   <GitBranch className="h-2.5 w-2.5" /> main
-                  <span className="font-mono">a3f1b2c</span>
+                  <span className="mx-1">·</span>
+                  <span>Stage 2/3</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-primary" style={{ width: '100%' }} />
+                    <div className="h-full rounded-full bg-primary" style={{ width: '50%' }} />
                   </div>
-                  <span className="text-[10px] text-muted-foreground">100%</span>
+                  <span className="text-[10px] text-muted-foreground">50%</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px]">
+                  <Shield className="h-2.5 w-2.5 text-green-500" />
+                  <span className="text-green-600">Health gate passed</span>
+                  <span className="mx-1 text-muted-foreground">·</span>
+                  <span className="text-muted-foreground">Next: 100% in 2h</span>
                 </div>
               </div>
               <div className="rounded-lg border p-3 space-y-2">
@@ -120,9 +130,9 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-amber-500" style={{ width: '25%' }} />
+                    <div className="h-full rounded-full bg-emerald-500" style={{ width: '100%' }} />
                   </div>
-                  <span className="text-[10px] text-muted-foreground">25%</span>
+                  <span className="text-[10px] text-green-600">Complete</span>
                 </div>
               </div>
             </div>
@@ -143,7 +153,7 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
                   <span>25% rollout</span>
                   <span className="mx-1">·</span>
                   <Users className="h-2.5 w-2.5 text-green-500" />
-                  <span>3 users</span>
+                  <span>iOS Pro Users</span>
                 </div>
               </div>
               <div className="rounded-lg border p-3 space-y-2">
@@ -153,35 +163,63 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
                 </div>
                 <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                   <span>boolean · 12.4k evals/day</span>
+                  <span className="mx-1">·</span>
+                  <span className="text-green-600">healthy</span>
+                </div>
+              </div>
+              <div className="rounded-lg border p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-medium">pricing-tier</span>
+                  <span className="inline-flex items-center rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] font-medium text-green-700">On</span>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <span>string · 3 variations</span>
                 </div>
               </div>
             </div>
 
-            {/* Adoption card */}
+            {/* Observe card */}
             <div className="p-5 space-y-3">
               <div className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-emerald-500" />
-                <span className="text-sm font-medium">Adoption</span>
+                <Eye className="h-4 w-4 text-amber-500" />
+                <span className="text-sm font-medium">Observe</span>
               </div>
-              <div className="space-y-2">
-                {[
-                  { version: 'v49 · a3f1b2c', pct: 64, color: 'bg-primary' },
-                  { version: 'v49 · e7d42f1', pct: 28, color: 'bg-blue-500' },
-                  { version: 'v48 · 7e2d9f4', pct: 8, color: 'bg-muted-foreground/40' },
-                ].map((r) => (
-                  <div key={r.version} className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px]">
-                      <span className="font-mono text-muted-foreground">{r.version}</span>
-                      <span className="font-medium">{r.pct}%</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div className={`h-full rounded-full ${r.color}`} style={{ width: `${r.pct}%` }} />
-                    </div>
-                  </div>
-                ))}
+              <div className="grid grid-cols-3 gap-2 mb-1">
+                <div className="rounded-lg border p-2 text-center">
+                  <div className="text-sm font-bold text-amber-600">12</div>
+                  <span className="text-[9px] text-muted-foreground">Errors</span>
+                </div>
+                <div className="rounded-lg border p-2 text-center">
+                  <div className="text-sm font-bold">0</div>
+                  <span className="text-[9px] text-muted-foreground">Crashes</span>
+                </div>
+                <div className="rounded-lg border p-2 text-center">
+                  <div className="text-sm font-bold">847</div>
+                  <span className="text-[9px] text-muted-foreground">Events</span>
+                </div>
+              </div>
+              <div className="rounded-lg border p-2.5 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Bug className="h-3 w-3 text-amber-500" />
+                  <span className="text-[11px] font-medium truncate">TypeError: Cannot read 'map'</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto shrink-0">x3</span>
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  2m ago · iOS · production
+                </div>
+              </div>
+              <div className="rounded-lg border p-2.5 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Zap className="h-3 w-3 text-primary" />
+                  <span className="text-[11px] font-medium truncate">checkout_completed</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto shrink-0">x291</span>
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  5m ago · Android · production
+                </div>
               </div>
               <div className="pt-1 text-[10px] text-muted-foreground">
-                1,247 devices · 3 active versions
+                99.8% crash-free · 14.2k devices
               </div>
             </div>
           </div>
@@ -194,7 +232,7 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold tracking-tight mb-3">Everything you need to ship fast</h2>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              OTA updates and feature flags in one platform. No per-seat pricing, no usage limits.
+              OTA updates, feature flags, progressive delivery, and observability in one platform.
             </p>
           </div>
 
@@ -206,44 +244,44 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
                 desc: 'Push JavaScript bundle updates directly to devices. Skip the app store review cycle for bug fixes and feature releases.',
               },
               {
-                icon: <Percent className="h-5 w-5 text-blue-500" />,
-                title: 'Percentage rollouts',
-                desc: 'Roll out updates gradually with deterministic device bucketing. Start at 5%, validate, then ramp to 100%.',
-              },
-              {
                 icon: <Flag className="h-5 w-5 text-indigo-500" />,
                 title: 'Feature flags',
-                desc: 'Boolean, string, number, and JSON flags with targeting rules. Percentage rollouts, user lists, and attribute matching.',
+                desc: 'Boolean, string, number, and JSON flags with targeting rules. Percentage rollouts, user lists, attribute matching, segments, and OTA-aware targeting.',
               },
               {
-                icon: <GitBranch className="h-5 w-5 text-emerald-500" />,
+                icon: <Layers className="h-5 w-5 text-blue-500" />,
+                title: 'Progressive delivery',
+                desc: 'Define multi-stage rollout policies with health gates. Automatically advance from 5% to 25% to 100% — or auto-rollback if errors spike.',
+              },
+              {
+                icon: <Eye className="h-5 w-5 text-amber-500" />,
+                title: 'Error & crash monitoring',
+                desc: 'Track JS errors, crashes, and custom events from your app. See stack traces, flag correlations, and per-update health at a glance.',
+              },
+              {
+                icon: <Activity className="h-5 w-5 text-emerald-500" />,
+                title: 'Health telemetry',
+                desc: 'Real-time error rates, crash-free percentages, and flag impact analysis. Correlate health regressions with specific flag changes automatically.',
+              },
+              {
+                icon: <Users className="h-5 w-5 text-violet-500" />,
+                title: 'Segments & contexts',
+                desc: 'Build reusable audience segments for targeting. Track evaluation contexts across users, devices, and organizations.',
+              },
+              {
+                icon: <GitBranch className="h-5 w-5 text-cyan-500" />,
                 title: 'Channels & branches',
                 desc: 'Map channels to branches for environment management. Production, staging, canary — each with independent rollout controls.',
               },
               {
-                icon: <BarChart3 className="h-5 w-5 text-amber-500" />,
-                title: 'Adoption analytics',
-                desc: 'Track which devices are running which versions. Per-update download counts, device adoption curves, and real-time distribution.',
-              },
-              {
                 icon: <Shield className="h-5 w-5 text-red-500" />,
-                title: 'Code signing',
-                desc: 'RSA-SHA256 manifest signing for update integrity verification. Devices reject unsigned or tampered updates.',
+                title: 'Code signing & rollback',
+                desc: 'RSA-SHA256 manifest signing for integrity verification. Instant rollback to any previous update with one click.',
               },
               {
-                icon: <Zap className="h-5 w-5 text-yellow-500" />,
-                title: 'Instant rollback',
-                desc: 'Roll back to any previous update or the embedded app version with one click. No new build required.',
-              },
-              {
-                icon: <Users className="h-5 w-5 text-violet-500" />,
-                title: 'User overrides',
-                desc: 'Target individual users or devices with specific branches. Test changes in production without affecting other users.',
-              },
-              {
-                icon: <Globe className="h-5 w-5 text-cyan-500" />,
-                title: 'Multi-platform',
-                desc: 'Works with Expo and bare React Native on iOS and Android. One CLI, one dashboard, every platform.',
+                icon: <Globe className="h-5 w-5 text-primary" />,
+                title: 'OpenFeature SDK',
+                desc: 'Standards-based feature flag SDK for React Native. Drop-in OpenFeature provider with built-in health reporting.',
               },
             ].map((feature) => (
               <div key={feature.title} className="rounded-xl border bg-background p-6 space-y-3">
@@ -270,7 +308,7 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
             {[
               {
                 step: '1',
-                title: 'Install the CLI',
+                title: 'Connect your project',
                 code: '$ dispatch login --server https://ota.appdispatch.dev --key <api-key>\n$ dispatch init',
               },
               {
@@ -280,7 +318,7 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
               },
               {
                 step: '3',
-                title: 'Or automate with CI/CD',
+                title: 'Automate with CI/CD',
                 code: '# .github/workflows/ota-deploy.yml\n- run: dispatch publish --channel ${{ inputs.channel }}',
               },
             ].map((s) => (
@@ -305,7 +343,7 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
         <div className="max-w-6xl mx-auto px-6 py-20">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold tracking-tight mb-3">Why Dispatch</h2>
-            <p className="text-muted-foreground text-lg">The only platform that combines OTA updates with feature flags for React Native.</p>
+            <p className="text-muted-foreground text-lg">The only platform that combines OTA updates, feature flags, and observability for React Native.</p>
           </div>
 
           <div className="max-w-3xl mx-auto grid grid-cols-2 gap-8">
@@ -315,12 +353,13 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
               </h3>
               <ul className="space-y-2.5 text-sm">
                 {[
-                  'OTA updates + feature flags in one tool',
-                  'No per-seat pricing',
-                  'Percentage rollouts with sticky bucketing',
+                  'OTA updates + feature flags + observability',
+                  'Progressive delivery with health gates',
+                  'Error & crash monitoring built in',
+                  'Audience segments & context targeting',
                   'Code signing & instant rollback',
-                  'Full audit trail & webhooks',
                   'OpenFeature-compatible SDK',
+                  'No per-seat pricing',
                   'CI/CD CLI with GitHub Actions support',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">
@@ -334,11 +373,12 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
               <h3 className="font-semibold text-muted-foreground">Others</h3>
               <ul className="space-y-2.5 text-sm text-muted-foreground">
                 {[
-                  'EAS Update — OTA only, no feature flags',
+                  'EAS Update — OTA only, no flags or monitoring',
                   'CodePush — deprecated by Microsoft',
                   'Shorebird — Dart/Flutter only',
                   'LaunchDarkly — flags only, no OTA, expensive',
-                  'Flagsmith — flags only, no OTA integration',
+                  'Sentry — monitoring only, no OTA or flags',
+                  'Flagsmith — flags only, no progressive delivery',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">
                     <span className="h-4 w-4 shrink-0 mt-0.5 text-center">—</span>
@@ -356,7 +396,7 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
         <div className="max-w-6xl mx-auto px-6 py-20">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold tracking-tight mb-3">Simple pricing</h2>
-            <p className="text-muted-foreground text-lg">One platform. No per-seat fees. No usage limits.</p>
+            <p className="text-muted-foreground text-lg">No per-seat fees. No update limits. Pay for what matters as you scale.</p>
           </div>
 
           <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -364,7 +404,7 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
             <div className="rounded-xl border bg-card p-6 space-y-5">
               <div>
                 <h3 className="font-semibold text-lg">Community</h3>
-                <p className="text-sm text-muted-foreground mt-1">For side projects and small teams</p>
+                <p className="text-sm text-muted-foreground mt-1">For side projects and indie devs</p>
               </div>
               <div>
                 <span className="text-4xl font-bold">Free</span>
@@ -375,8 +415,8 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
                   'Unlimited OTA updates',
                   'Unlimited devices',
                   '1 project',
-                  'Feature flags (all types)',
-                  'Percentage rollouts',
+                  'Boolean feature flags',
+                  'Error monitoring (7-day retention)',
                   'Community support',
                 ].map((f) => (
                   <li key={f} className="flex items-center gap-2">
@@ -407,10 +447,11 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
                 {[
                   'Everything in Community',
                   'Unlimited projects',
-                  'Webhooks & integrations',
-                  'Full audit trail',
-                  'Code signing',
-                  'User overrides & targeting',
+                  'All flag types & targeting rules',
+                  'Segments & audience targeting',
+                  'Progressive delivery & health gates',
+                  '30-day monitoring retention',
+                  'Code signing, webhooks & audit trail',
                   'Priority support',
                 ].map((f) => (
                   <li key={f} className="flex items-center gap-2">
@@ -438,9 +479,9 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
                   'Everything in Pro',
                   'SSO / SAML',
                   'Role-based access control',
+                  'Custom data retention',
                   'Dedicated support & SLA',
                   'Custom integrations',
-                  'Uptime SLA guarantee',
                 ].map((f) => (
                   <li key={f} className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-primary" />
@@ -460,7 +501,7 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
       <section className="border-t bg-card">
         <div className="max-w-6xl mx-auto px-6 py-16 text-center">
           <h2 className="text-2xl font-bold tracking-tight mb-3">Ready to ship faster?</h2>
-          <p className="text-muted-foreground mb-6">Start pushing updates in under 5 minutes.</p>
+          <p className="text-muted-foreground mb-6">Start pushing updates in under 5 minutes. No credit card required.</p>
           <div className="flex items-center justify-center gap-4">
             {needsSetup ? (
               <Button size="lg" onClick={onSetup}>
@@ -482,7 +523,7 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
             <DispatchLogo className="h-4 w-4" />
             <span>Dispatch</span>
           </div>
-          <span>OTA updates & feature flags for Expo & React Native</span>
+          <span>The release platform for Expo & React Native</span>
         </div>
       </footer>
     </div>
