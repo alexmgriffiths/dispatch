@@ -5,9 +5,7 @@ import {
   Rocket,
   Flag,
   GitBranch,
-  BarChart3,
   Shield,
-  Zap,
   Upload,
   Users,
   Globe,
@@ -15,10 +13,12 @@ import {
   Check,
   ArrowRight,
   Bug,
-  Activity,
   Eye,
   Layers,
   AlertTriangle,
+  Link2,
+  Undo2,
+  ClipboardList,
 } from 'lucide-react'
 
 interface Props {
@@ -35,11 +35,12 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <DispatchLogo className="h-6 w-6" />
-            <span className="text-lg font-bold tracking-tight">Dispatch</span>
+            <span className="text-lg font-bold tracking-tight">AppDispatch</span>
           </div>
           <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Features</a>
             <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
+            <a href="https://docs.appdispatch.io" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Docs</a>
           </nav>
           <div className="flex items-center gap-3">
             {needsSetup ? (
@@ -57,14 +58,15 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
       {/* Hero */}
       <section className="max-w-6xl mx-auto px-6 pt-24 pb-20">
         <div className="max-w-3xl">
-          <Badge variant="secondary" className="mb-4 text-xs">OTA Updates + Feature Flags + Progressive Delivery</Badge>
+          <Badge variant="secondary" className="mb-4 text-xs">One platform replaces EAS Updates + LaunchDarkly + Sentry</Badge>
           <h1 className="text-5xl font-bold tracking-tight leading-[1.1] mb-6">
-            Ship, flag, and observe<br />your mobile releases
+            Continuous delivery<br />for Expo & React Native
           </h1>
           <p className="text-xl text-muted-foreground leading-relaxed mb-8 max-w-2xl">
-            Dispatch is the release platform for Expo & React Native. Push OTA updates
-            in seconds, control features with flags, automate rollouts with health gates,
-            and monitor errors — all from one dashboard.
+            Most mobile teams use three separate tools to ship safely: one for OTA updates,
+            one for feature flags, and one for crash monitoring. AppDispatch replaces all three —
+            so deploying code, enabling features, measuring impact, and rolling back are a single
+            workflow, not a juggling act.
           </p>
           <div className="flex items-center gap-4">
             {needsSetup ? (
@@ -178,11 +180,21 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
               </div>
             </div>
 
-            {/* Observe card */}
+            {/* Observe card — cross-dimensional attribution */}
             <div className="p-5 space-y-3">
               <div className="flex items-center gap-2">
                 <Eye className="h-4 w-4 text-amber-500" />
                 <span className="text-sm font-medium">Observe</span>
+              </div>
+              <div className="rounded-lg border border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30 p-2.5 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <AlertTriangle className="h-3 w-3 text-red-500" />
+                  <span className="text-[11px] font-semibold text-red-700 dark:text-red-400">Crash spike detected</span>
+                </div>
+                <div className="text-[10px] text-muted-foreground space-y-0.5">
+                  <div>Runtime: <span className="font-mono">49.0.0</span> · Flag: <span className="font-mono">new-checkout = true</span></div>
+                  <div>Channel: production · Affected: 4% of devices</div>
+                </div>
               </div>
               <div className="grid grid-cols-3 gap-2 mb-1">
                 <div className="rounded-lg border p-2 text-center">
@@ -205,17 +217,7 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
                   <span className="text-[10px] text-muted-foreground ml-auto shrink-0">x3</span>
                 </div>
                 <div className="text-[10px] text-muted-foreground">
-                  2m ago · iOS · production
-                </div>
-              </div>
-              <div className="rounded-lg border p-2.5 space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Zap className="h-3 w-3 text-primary" />
-                  <span className="text-[11px] font-medium truncate">checkout_completed</span>
-                  <span className="text-[10px] text-muted-foreground ml-auto shrink-0">x291</span>
-                </div>
-                <div className="text-[10px] text-muted-foreground">
-                  5m ago · Android · production
+                  2m ago · iOS · production · <span className="font-mono">new-checkout=true</span>
                 </div>
               </div>
               <div className="pt-1 text-[10px] text-muted-foreground">
@@ -230,9 +232,9 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
       <section id="features" className="border-t bg-card">
         <div className="max-w-6xl mx-auto px-6 py-20">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold tracking-tight mb-3">Everything you need to ship fast</h2>
+            <h2 className="text-3xl font-bold tracking-tight mb-3">Everything you need to ship safely</h2>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              OTA updates, feature flags, progressive delivery, and observability in one platform.
+              OTA releases, feature flags, progressive delivery, and cross-dimensional telemetry in one platform.
             </p>
           </div>
 
@@ -240,13 +242,18 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
             {[
               {
                 icon: <Upload className="h-5 w-5 text-primary" />,
-                title: 'Instant OTA updates',
+                title: 'OTA releases',
                 desc: 'Push JavaScript bundle updates directly to devices. Skip the app store review cycle for bug fixes and feature releases.',
               },
               {
                 icon: <Flag className="h-5 w-5 text-indigo-500" />,
                 title: 'Feature flags',
-                desc: 'Boolean, string, number, and JSON flags with targeting rules. Percentage rollouts, user lists, attribute matching, segments, and OTA-aware targeting.',
+                desc: 'Boolean, string, number, and JSON flags with targeting rules. Percentage rollouts, user segments, attribute matching, and on-device evaluation with no network calls.',
+              },
+              {
+                icon: <Link2 className="h-5 w-5 text-pink-500" />,
+                title: 'Linked flags',
+                desc: 'Tie flag state to a release so features activate only for devices that have the code. No more flags firing before the code ships.',
               },
               {
                 icon: <Layers className="h-5 w-5 text-blue-500" />,
@@ -255,18 +262,13 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
               },
               {
                 icon: <Eye className="h-5 w-5 text-amber-500" />,
-                title: 'Error & crash monitoring',
-                desc: 'Track JS errors, crashes, and custom events from your app. See stack traces, flag correlations, and per-update health at a glance.',
+                title: 'Cross-dimensional telemetry',
+                desc: 'Every error is tagged with the device\'s flag state and release version. See exactly which combination of code and configuration caused the issue.',
               },
               {
-                icon: <Activity className="h-5 w-5 text-emerald-500" />,
-                title: 'Health telemetry',
-                desc: 'Real-time error rates, crash-free percentages, and flag impact analysis. Correlate health regressions with specific flag changes automatically.',
-              },
-              {
-                icon: <Users className="h-5 w-5 text-violet-500" />,
-                title: 'Segments & contexts',
-                desc: 'Build reusable audience segments for targeting. Track evaluation contexts across users, devices, and organizations.',
+                icon: <Undo2 className="h-5 w-5 text-red-500" />,
+                title: 'Graduated rollback',
+                desc: 'Revert a single flag, an entire release, or a whole channel. Three levels of rollback because not every issue needs a full revert.',
               },
               {
                 icon: <GitBranch className="h-5 w-5 text-cyan-500" />,
@@ -274,9 +276,9 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
                 desc: 'Map channels to branches for environment management. Production, staging, canary — each with independent rollout controls.',
               },
               {
-                icon: <Shield className="h-5 w-5 text-red-500" />,
-                title: 'Code signing & rollback',
-                desc: 'RSA-SHA256 manifest signing for integrity verification. Instant rollback to any previous update with one click.',
+                icon: <ClipboardList className="h-5 w-5 text-violet-500" />,
+                title: 'Audit log & webhooks',
+                desc: 'Full audit trail of every action. Webhooks for CI/CD integration, Slack alerts, and custom automation.',
               },
               {
                 icon: <Globe className="h-5 w-5 text-primary" />,
@@ -300,26 +302,26 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
       <section className="border-t">
         <div className="max-w-6xl mx-auto px-6 py-20">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold tracking-tight mb-3">Up and running in minutes</h2>
-            <p className="text-muted-foreground text-lg">Three commands to your first OTA update.</p>
+            <h2 className="text-3xl font-bold tracking-tight mb-3">Deploy → Enable → Measure → Ramp</h2>
+            <p className="text-muted-foreground text-lg">One workflow from code push to full rollout.</p>
           </div>
 
           <div className="max-w-2xl mx-auto space-y-8">
             {[
               {
                 step: '1',
-                title: 'Connect your project',
-                code: '$ dispatch login --server https://ota.appdispatch.dev --key <api-key>\n$ dispatch init',
+                title: 'Deploy code',
+                code: '$ dispatch publish --channel production --rollout 5% \\\n    --linked-flags new-checkout -m "New checkout flow"',
               },
               {
                 step: '2',
-                title: 'Push an update',
-                code: '$ dispatch publish --channel production -m "Fix login bug"',
+                title: 'Measure impact',
+                desc: 'AppDispatch tracks error rates and crash-free percentages per flag variation and release version. If the new-checkout=true variation spikes errors, you\'ll know instantly.',
               },
               {
                 step: '3',
-                title: 'Automate with CI/CD',
-                code: '# .github/workflows/ota-deploy.yml\n- run: dispatch publish --channel ${{ inputs.channel }}',
+                title: 'Ramp or rollback',
+                desc: 'Health gates pass → automatically advance to 25%, then 100%. Metrics degrade → auto-rollback kicks in. Revert a single flag, the release, or the whole channel.',
               },
             ].map((s) => (
               <div key={s.step} className="flex gap-4">
@@ -328,9 +330,13 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold mb-2">{s.title}</h3>
-                  <pre className="text-[12px] bg-muted rounded-lg px-4 py-3 font-mono text-muted-foreground overflow-x-auto whitespace-pre">
-                    {s.code}
-                  </pre>
+                  {'code' in s ? (
+                    <pre className="text-[12px] bg-muted rounded-lg px-4 py-3 font-mono text-muted-foreground overflow-x-auto whitespace-pre">
+                      {s.code}
+                    </pre>
+                  ) : (
+                    <p className="text-sm text-muted-foreground leading-relaxed">{'desc' in s ? s.desc : ''}</p>
+                  )}
                 </div>
               </div>
             ))}
@@ -342,25 +348,25 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
       <section className="border-t bg-card">
         <div className="max-w-6xl mx-auto px-6 py-20">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold tracking-tight mb-3">Why Dispatch</h2>
-            <p className="text-muted-foreground text-lg">The only platform that combines OTA updates, feature flags, and observability for React Native.</p>
+            <h2 className="text-3xl font-bold tracking-tight mb-3">One system, not three</h2>
+            <p className="text-muted-foreground text-lg">The only platform that combines OTA releases, feature flags, and observability for React Native.</p>
           </div>
 
           <div className="max-w-3xl mx-auto grid grid-cols-2 gap-8">
             <div className="space-y-4">
               <h3 className="font-semibold flex items-center gap-2">
-                <DispatchLogo className="h-5 w-5" /> Dispatch
+                <DispatchLogo className="h-5 w-5" /> AppDispatch
               </h3>
               <ul className="space-y-2.5 text-sm">
                 {[
-                  'OTA updates + feature flags + observability',
-                  'Progressive delivery with health gates',
-                  'Error & crash monitoring built in',
-                  'Audience segments & context targeting',
-                  'Code signing & instant rollback',
-                  'OpenFeature-compatible SDK',
+                  'OTA releases + feature flags + observability',
+                  'Linked flags — features activate only with the code',
+                  'Cross-dimensional telemetry — correlate flags × releases',
+                  'Graduated rollback — flag, release, or channel level',
+                  'Progressive delivery with auto-rollback',
+                  'OpenFeature-compatible SDK, on-device evaluation',
                   'No per-seat pricing',
-                  'CI/CD CLI with GitHub Actions support',
+                  'Full audit log, webhooks, CI/CD CLI',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
@@ -500,8 +506,8 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
       {/* CTA */}
       <section className="border-t bg-card">
         <div className="max-w-6xl mx-auto px-6 py-16 text-center">
-          <h2 className="text-2xl font-bold tracking-tight mb-3">Ready to ship faster?</h2>
-          <p className="text-muted-foreground mb-6">Start pushing updates in under 5 minutes. No credit card required.</p>
+          <h2 className="text-2xl font-bold tracking-tight mb-3">Ready to replace three tools with one?</h2>
+          <p className="text-muted-foreground mb-6">Start pushing releases in under 5 minutes. No credit card required.</p>
           <div className="flex items-center justify-center gap-4">
             {needsSetup ? (
               <Button size="lg" onClick={onSetup}>
@@ -521,9 +527,9 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
         <div className="max-w-6xl mx-auto px-6 py-8 flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <DispatchLogo className="h-4 w-4" />
-            <span>Dispatch</span>
+            <span>AppDispatch</span>
           </div>
-          <span>The release platform for Expo & React Native</span>
+          <span>Continuous delivery for Expo & React Native</span>
         </div>
       </footer>
     </div>
