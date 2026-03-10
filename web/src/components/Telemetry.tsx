@@ -17,6 +17,7 @@ import {
   Loader2,
   BarChart3,
   Zap,
+  Clock,
 } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import {
@@ -37,6 +38,7 @@ export default function Telemetry({ onNavigate }: { onNavigate?: (page: string) 
   const [timeseries, setTimeseries] = useState<TelemetryDailyPoint[]>([])
   const [impacts, setImpacts] = useState<TelemetryFlagImpact[]>([])
   const [events, setEvents] = useState<TelemetryEvent[]>([])
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [initialLoad, setInitialLoad] = useState(true)
   const [selectedFlag, setSelectedFlag] = useState<string>('all')
@@ -47,14 +49,15 @@ export default function Telemetry({ onNavigate }: { onNavigate?: (page: string) 
     try {
       const channelOpt = selectedChannel !== 'all' ? selectedChannel : undefined
       const flagOpt = selectedFlag !== 'all' ? selectedFlag : undefined
-      const [ts, fi, ev] = await Promise.all([
+      const [tsRes, fiRes, ev] = await Promise.all([
         getTelemetryTimeseries({ days: Number(days), channel: channelOpt, flagKey: flagOpt }),
         getTelemetryFlagImpacts({ channel: channelOpt, flagKey: flagOpt }),
         getTelemetryEvents({ days: Number(days), flagKey: flagOpt }),
       ])
-      setTimeseries(ts)
-      setImpacts(fi)
+      setTimeseries(tsRes.data)
+      setImpacts(fiRes.data)
       setEvents(ev)
+      setLastUpdatedAt(tsRes.lastUpdatedAt ?? fiRes.lastUpdatedAt ?? null)
     } finally {
       setLoading(false)
       setInitialLoad(false)
@@ -171,6 +174,7 @@ export default function Telemetry({ onNavigate }: { onNavigate?: (page: string) 
           </div>
 
           {/* ── Health timeseries ──────────────────────────── */}
+          <UpdatedAgoLabel lastUpdatedAt={lastUpdatedAt} />
           <div className="grid grid-cols-2 gap-4">
             <div className="rounded-lg border bg-card p-5">
               <h3 className="text-sm font-medium mb-4">Error rate over time</h3>
@@ -434,6 +438,26 @@ function DeltaBadge({ value, suffix = '', invert = false }: { value: number; suf
       )}
       {isPositive ? '+' : ''}{value}{suffix}
     </span>
+  )
+}
+
+function UpdatedAgoLabel({ lastUpdatedAt }: { lastUpdatedAt: string | null }) {
+  if (!lastUpdatedAt) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Clock className="h-3 w-3" />
+        <span>No data yet</span>
+      </div>
+    )
+  }
+  const diff = Date.now() - new Date(lastUpdatedAt).getTime()
+  const minutes = Math.floor(diff / 60000)
+  const label = minutes < 1 ? 'Updated just now' : `Updated ${minutes} min ago`
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <Clock className="h-3 w-3" />
+      <span>{label}</span>
+    </div>
   )
 }
 

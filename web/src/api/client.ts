@@ -2161,7 +2161,7 @@ export async function getTelemetryTimeseries(opts?: {
   days?: number;
   channel?: string;
   flagKey?: string;
-}): Promise<TelemetryDailyPoint[]> {
+}): Promise<{ data: TelemetryDailyPoint[]; lastUpdatedAt: string | null }> {
   if (USE_MOCK) {
     await mockDelay();
     const days = opts?.days ?? 14;
@@ -2182,7 +2182,7 @@ export async function getTelemetryTimeseries(opts?: {
         updates: Math.floor(800 + Math.random() * 400),
       });
     }
-    return data;
+    return { data, lastUpdatedAt: new Date().toISOString() };
   }
   const params = new URLSearchParams();
   if (opts?.days) params.set("days", String(opts.days));
@@ -2196,36 +2196,39 @@ export async function getTelemetryTimeseries(opts?: {
 export async function getTelemetryFlagImpacts(opts?: {
   channel?: string;
   flagKey?: string;
-}): Promise<TelemetryFlagImpact[]> {
+}): Promise<{ data: TelemetryFlagImpact[]; lastUpdatedAt: string | null }> {
   if (USE_MOCK) {
     await mockDelay();
-    return [
-      {
-        flagId: 1, flagKey: "new-checkout-flow", flagName: "New Checkout Flow",
-        variationName: "On", runtimeVersion: "2.4.1", channel: "production",
-        devices: 1247, errorRate: 1.2, errorRateDelta: 0.4, crashFree: 99.1,
-      },
-      {
-        flagId: 2, flagKey: "checkout-layout", flagName: "Checkout Layout",
-        variationName: "Single Page", runtimeVersion: "2.4.1", channel: "production",
-        devices: 3420, errorRate: 0.6, errorRateDelta: -0.2, crashFree: 99.7,
-      },
-      {
-        flagId: 2, flagKey: "checkout-layout", flagName: "Checkout Layout",
-        variationName: "Accordion", runtimeVersion: "2.3.9", channel: "canary",
-        devices: 23, errorRate: 3.8, errorRateDelta: 3.0, crashFree: 97.2,
-      },
-      {
-        flagId: 3, flagKey: "max-retry-count", flagName: "Max Retry Count",
-        variationName: "5 retries", runtimeVersion: "2.4.1", channel: "production",
-        devices: 893, errorRate: 0.3, errorRateDelta: -0.5, crashFree: 99.9,
-      },
-      {
-        flagId: 5, flagKey: "api-config", flagName: "API Config",
-        variationName: "Resilient", runtimeVersion: "2.4.1", channel: "production",
-        devices: 620, errorRate: 0.2, errorRateDelta: -0.6, crashFree: 99.95,
-      },
-    ];
+    return {
+      data: [
+        {
+          flagId: 1, flagKey: "new-checkout-flow", flagName: "New Checkout Flow",
+          variationName: "On", runtimeVersion: "2.4.1", channel: "production",
+          devices: 1247, errorRate: 1.2, errorRateDelta: 0.4, crashFree: 99.1,
+        },
+        {
+          flagId: 2, flagKey: "checkout-layout", flagName: "Checkout Layout",
+          variationName: "Single Page", runtimeVersion: "2.4.1", channel: "production",
+          devices: 3420, errorRate: 0.6, errorRateDelta: -0.2, crashFree: 99.7,
+        },
+        {
+          flagId: 2, flagKey: "checkout-layout", flagName: "Checkout Layout",
+          variationName: "Accordion", runtimeVersion: "2.3.9", channel: "canary",
+          devices: 23, errorRate: 3.8, errorRateDelta: 3.0, crashFree: 97.2,
+        },
+        {
+          flagId: 3, flagKey: "max-retry-count", flagName: "Max Retry Count",
+          variationName: "5 retries", runtimeVersion: "2.4.1", channel: "production",
+          devices: 893, errorRate: 0.3, errorRateDelta: -0.5, crashFree: 99.9,
+        },
+        {
+          flagId: 5, flagKey: "api-config", flagName: "API Config",
+          variationName: "Resilient", runtimeVersion: "2.4.1", channel: "production",
+          devices: 620, errorRate: 0.2, errorRateDelta: -0.6, crashFree: 99.95,
+        },
+      ],
+      lastUpdatedAt: new Date().toISOString(),
+    };
   }
   const params = new URLSearchParams();
   if (opts?.channel) params.set("channel", opts.channel);
@@ -2289,6 +2292,51 @@ export async function getTelemetryEvents(opts?: {
   if (opts?.days) params.set("days", String(opts.days));
   if (opts?.flagKey) params.set("flag_key", opts.flagKey);
   const res = await authFetch(`${BASE}/telemetry/events?${params}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// -- Performance Metrics --
+
+export interface PerformancePoint {
+  bucketHour: string;
+  p50: number;
+  p95: number;
+  p99: number;
+  sampleCount: number;
+}
+
+export interface PerformanceLatest {
+  p50: number;
+  p95: number;
+  p99: number;
+  sampleCount: number;
+}
+
+export interface PerformanceMetricSeries {
+  metricName: string;
+  points: PerformancePoint[];
+  latest: PerformanceLatest;
+}
+
+export interface PerformanceResponse {
+  metrics: PerformanceMetricSeries[];
+  lastUpdatedAt: string | null;
+}
+
+export async function fetchPerformanceMetrics(
+  filters?: { channel?: string; platform?: string; runtimeVersion?: string },
+): Promise<PerformanceResponse> {
+  if (USE_MOCK) {
+    await mockDelay();
+    return { metrics: [], lastUpdatedAt: null };
+  }
+  const params = new URLSearchParams();
+  if (filters?.channel) params.set("channel", filters.channel);
+  if (filters?.platform) params.set("platform", filters.platform);
+  if (filters?.runtimeVersion)
+    params.set("runtime_version", filters.runtimeVersion);
+  const res = await authFetch(`${BASE}/telemetry/performance?${params}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
