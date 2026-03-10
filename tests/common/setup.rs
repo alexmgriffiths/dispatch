@@ -1,5 +1,6 @@
 use dispatch_ota::config::Config;
 use dispatch_ota::execution_events::ExecutionEventRegistry;
+use dispatch_ota::flag_events::FlagEventRegistry;
 use dispatch_ota::routes::AppState;
 use sqlx::PgPool;
 
@@ -44,6 +45,7 @@ pub async fn create_test_state() -> AppState {
         config,
         private_key: None,
         execution_events: ExecutionEventRegistry::new(),
+        flag_events: FlagEventRegistry::new(),
     }
 }
 

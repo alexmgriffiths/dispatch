@@ -6,6 +6,7 @@ pub mod branches;
 pub mod builds;
 pub mod contexts;
 pub mod feature_flags;
+pub mod flag_evaluator;
 pub mod health_metrics;
 pub mod manifest;
 pub mod observe;

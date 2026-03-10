@@ -375,7 +375,9 @@ async fn update_flag_health_snapshots(
     #[derive(sqlx::FromRow)]
     struct FlagStatRow {
         flag_id: i64,
+        #[allow(dead_code)]
         flag_key: String,
+        #[allow(dead_code)]
         flag_value: String,
         channel_name: Option<String>,
         launches: Option<i64>,

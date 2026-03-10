@@ -2,6 +2,7 @@ pub mod auth;
 pub mod config;
 pub mod errors;
 pub mod execution_events;
+pub mod flag_events;
 pub mod handlers;
 pub mod jobs;
 pub mod models;

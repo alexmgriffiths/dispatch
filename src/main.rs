@@ -2,6 +2,7 @@ use tracing_subscriber::EnvFilter;
 
 use dispatch_ota::config::Config;
 use dispatch_ota::execution_events::ExecutionEventRegistry;
+use dispatch_ota::flag_events::FlagEventRegistry;
 use dispatch_ota::handlers;
 use dispatch_ota::jobs;
 use dispatch_ota::routes::{AppState, create_router};
@@ -84,6 +85,7 @@ async fn main() {
         config,
         private_key,
         execution_events,
+        flag_events: FlagEventRegistry::new(),
     };
     let app = create_router(state);
 

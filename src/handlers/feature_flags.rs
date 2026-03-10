@@ -1,17 +1,221 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::Json;
 use serde::Deserialize;
+use std::convert::Infallible;
+use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::StreamExt;
 
 use crate::auth::RequireAuth;
 use crate::errors::AppError;
+use crate::flag_events::FlagEvent;
 use crate::handlers::audit::record_audit;
+use crate::handlers::flag_evaluator;
 use crate::models::{
     FeatureFlag, FlagEnvSetting, FlagEvaluationCount, FlagEvaluationVariationCount,
     FlagTargetingRule, FlagVariation,
 };
 use crate::routes::AppState;
+
+// ── SSE flag change notification helpers ─────────────────────────────────
+
+/// Re-evaluate a flag for all connected SSE contexts and push patch events.
+/// Called after any flag/rule/variation/env-setting mutation.
+///
+/// This is fire-and-forget: errors are logged at debug level but never
+/// propagated. The function loads the flag + rules + variations from DB,
+/// iterates over ALL connected contexts for the project, re-evaluates
+/// the flag for each context (applying channel-specific env settings),
+/// and emits a Patch event with the result.
+async fn notify_flag_change(state: &AppState, flag_id: i64, project_id: i64) {
+    // 1. Load the flag from DB
+    let flag = match sqlx::query_as::<_, FeatureFlag>(
+        "SELECT * FROM feature_flags WHERE id = $1 AND project_id = $2",
+    )
+    .bind(flag_id)
+    .bind(project_id)
+    .fetch_optional(&state.db)
+    .await
+    {
+        Ok(Some(f)) => f,
+        Ok(None) => {
+            tracing::debug!("notify_flag_change: flag {flag_id} not found (possibly deleted)");
+            return;
+        }
+        Err(e) => {
+            tracing::debug!("notify_flag_change: failed to load flag {flag_id}: {e}");
+            return;
+        }
+    };
+
+    // 2. Load rules and variations for this flag
+    let rules = match sqlx::query_as::<_, FlagTargetingRule>(
+        "SELECT * FROM flag_targeting_rules WHERE flag_id = $1 ORDER BY priority",
+    )
+    .bind(flag_id)
+    .fetch_all(&state.db)
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::debug!("notify_flag_change: failed to load rules for flag {flag_id}: {e}");
+            return;
+        }
+    };
+
+    let variations = match sqlx::query_as::<_, FlagVariation>(
+        "SELECT * FROM flag_variations WHERE flag_id = $1 ORDER BY sort_order",
+    )
+    .bind(flag_id)
+    .fetch_all(&state.db)
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::debug!(
+                "notify_flag_change: failed to load variations for flag {flag_id}: {e}"
+            );
+            return;
+        }
+    };
+
+    // 3. Get ALL connected contexts for this project
+    let contexts = state.flag_events.iter_contexts_for_project(project_id);
+    if contexts.is_empty() {
+        tracing::debug!("notify_flag_change: no connected contexts for project {project_id}");
+        return;
+    }
+
+    // 3b. If flag is disabled, send Delete to all contexts (SDK uses client defaults)
+    if !flag.enabled {
+        for conn_key in &contexts {
+            state.flag_events.emit(
+                conn_key,
+                FlagEvent::Delete {
+                    key: flag.key.clone(),
+                },
+            );
+        }
+        tracing::debug!(
+            "notify_flag_change: flag '{}' disabled, sent delete to {} contexts",
+            flag.key,
+            contexts.len()
+        );
+        return;
+    }
+
+    // 4. For each connected context, re-evaluate and push
+    for conn_key in contexts {
+        let (_proj_id, ref channel, ref targeting_key) = conn_key;
+
+        // Load channel-specific env setting for this flag
+        let env_setting = match sqlx::query_as::<_, FlagEnvSetting>(
+            "SELECT * FROM flag_env_settings WHERE flag_id = $1 AND channel_name = $2",
+        )
+        .bind(flag_id)
+        .bind(channel)
+        .fetch_optional(&state.db)
+        .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::debug!(
+                    "notify_flag_change: failed to load env setting for flag {flag_id} channel {channel}: {e}"
+                );
+                continue;
+            }
+        };
+
+        // Apply channel env settings (same logic as evaluate_all_flags)
+        let (enabled, default_value) = if let Some(ref env) = env_setting {
+            (env.enabled, env.default_value.clone())
+        } else {
+            (flag.enabled, flag.default_value.clone())
+        };
+
+        // Filter rules to channel-specific + global (NULL channel)
+        let channel_rules: Vec<_> = rules
+            .iter()
+            .filter(|r| {
+                r.channel_name.is_none() || r.channel_name.as_deref() == Some(channel.as_str())
+            })
+            .collect();
+
+        // Build FlagWithRules for the evaluator
+        let eval_flag = flag_evaluator::FlagWithRules {
+            key: flag.key.clone(),
+            flag_type: flag.flag_type.clone(),
+            default_value,
+            enabled,
+            rules: channel_rules
+                .into_iter()
+                .map(|r| flag_evaluator::RuleWithConfig {
+                    priority: r.priority,
+                    rule_type: r.rule_type.clone(),
+                    variant_value: r.variant_value.clone(),
+                    rule_config: r.rule_config.clone(),
+                })
+                .collect(),
+            variations: variations
+                .iter()
+                .map(|v| flag_evaluator::Variation {
+                    id: v.id,
+                    value: v.value.clone(),
+                    name: v.name.clone(),
+                })
+                .collect(),
+        };
+
+        // Build EvalContext with targeting_key (attributes empty --
+        // attribute-based rules won't re-evaluate perfectly on push,
+        // but full re-evaluation happens on SSE reconnect via put event)
+        let context = flag_evaluator::EvalContext {
+            targeting_key: if targeting_key.is_empty() {
+                None
+            } else {
+                Some(targeting_key.clone())
+            },
+            attributes: serde_json::Map::new(),
+        };
+
+        let result = flag_evaluator::evaluate_flag(&eval_flag, &context);
+
+        // Emit Patch event for this specific connection context
+        let patch_value = serde_json::to_value(&result).unwrap_or_default();
+        state.flag_events.emit(
+            &conn_key,
+            FlagEvent::Patch {
+                key: flag.key.clone(),
+                flag: patch_value,
+            },
+        );
+    }
+
+    tracing::debug!(
+        "notify_flag_change: pushed patch events for flag '{}' (id={flag_id}) to connected contexts",
+        flag.key
+    );
+}
+
+/// Push a Delete event for a flag to all connected SSE contexts for the project.
+/// Called after a flag is deleted from the database.
+fn notify_flag_deleted(state: &AppState, flag_key: &str, project_id: i64) {
+    let contexts = state.flag_events.iter_contexts_for_project(project_id);
+    for conn_key in contexts {
+        state.flag_events.emit(
+            &conn_key,
+            FlagEvent::Delete {
+                key: flag_key.to_string(),
+            },
+        );
+    }
+    tracing::debug!(
+        "notify_flag_deleted: pushed delete events for flag '{flag_key}' to {} connected contexts",
+        state.flag_events.iter_contexts_for_project(project_id).len()
+    );
+}
 
 // ── List all flags (with per-channel status summary) ────────────────────
 
@@ -467,6 +671,13 @@ pub async fn handle_patch_flag(
     )
     .await;
 
+    // Fire-and-forget: notify connected SSE clients of the flag change
+    let notify_state = state.clone();
+    let notify_flag_id = flag.id;
+    tokio::spawn(async move {
+        notify_flag_change(&notify_state, notify_flag_id, project_id).await;
+    });
+
     Ok(Json(flag))
 }
 
@@ -497,6 +708,15 @@ pub async fn handle_delete_flag(
         ));
     }
 
+    // Fetch flag key before deletion (needed for SSE delete notification)
+    let flag_key = sqlx::query_scalar::<_, String>(
+        "SELECT key FROM feature_flags WHERE project_id = $1 AND id = $2",
+    )
+    .bind(project_id)
+    .bind(flag_id)
+    .fetch_optional(&state.db)
+    .await?;
+
     let result =
         sqlx::query("DELETE FROM feature_flags WHERE project_id = $1 AND id = $2")
             .bind(project_id)
@@ -517,6 +737,11 @@ pub async fn handle_delete_flag(
         serde_json::json!({ "id": flag_id }),
     )
     .await;
+
+    // Fire-and-forget: notify connected SSE clients of the flag deletion
+    if let Some(key) = flag_key {
+        notify_flag_deleted(&state, &key, project_id);
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -580,6 +805,12 @@ pub async fn handle_patch_env_setting(
         }),
     )
     .await;
+
+    // Fire-and-forget: notify connected SSE clients of the env setting change
+    let notify_state = state.clone();
+    tokio::spawn(async move {
+        notify_flag_change(&notify_state, flag_id, project_id).await;
+    });
 
     Ok(Json(setting))
 }
@@ -665,6 +896,12 @@ pub async fn handle_create_rule(
     )
     .await;
 
+    // Fire-and-forget: notify connected SSE clients of the new rule
+    let notify_state = state.clone();
+    tokio::spawn(async move {
+        notify_flag_change(&notify_state, flag_id, project_id).await;
+    });
+
     Ok((StatusCode::CREATED, Json(rule)))
 }
 
@@ -739,6 +976,12 @@ pub async fn handle_patch_rule(
         serde_json::json!({ "flagId": flag_id, "ruleId": rule_id }),
     )
     .await;
+
+    // Fire-and-forget: notify connected SSE clients of the rule change
+    let notify_state = state.clone();
+    tokio::spawn(async move {
+        notify_flag_change(&notify_state, flag_id, project_id).await;
+    });
 
     Ok(Json(rule))
 }
@@ -957,6 +1200,12 @@ pub async fn handle_delete_rule(
         serde_json::json!({ "flagId": flag_id, "ruleId": rule_id }),
     )
     .await;
+
+    // Fire-and-forget: notify connected SSE clients of the rule deletion
+    let notify_state = state.clone();
+    tokio::spawn(async move {
+        notify_flag_change(&notify_state, flag_id, project_id).await;
+    });
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1188,6 +1437,12 @@ pub async fn handle_patch_variation(
         serde_json::json!({ "flagId": flag_id, "variationId": variation_id }),
     )
     .await;
+
+    // Fire-and-forget: notify connected SSE clients of the variation change
+    let notify_state = state.clone();
+    tokio::spawn(async move {
+        notify_flag_change(&notify_state, flag_id, project_id).await;
+    });
 
     Ok(Json(variation))
 }
@@ -1581,4 +1836,366 @@ pub async fn handle_report_evaluations(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ── Bulk flag evaluation (OTA client endpoint) ──────────────────────────
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkEvalRequest {
+    pub project_slug: String,
+    pub channel: Option<String>,
+    pub device_id: String,
+    pub targeting_key: Option<String>,
+    pub platform: Option<String>,
+    pub runtime_version: Option<String>,
+    pub attributes: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkEvalResponse {
+    pub flags: std::collections::HashMap<String, flag_evaluator::EvalResult>,
+}
+
+/// Load all flags for a project, evaluate each against the given context,
+/// and return the results keyed by flag key. Shared by handle_bulk_eval
+/// and handle_flag_stream (for the initial put event).
+pub async fn evaluate_all_flags(
+    db: &sqlx::PgPool,
+    project_id: i64,
+    channel: Option<&str>,
+    context: &flag_evaluator::EvalContext,
+) -> Result<std::collections::HashMap<String, flag_evaluator::EvalResult>, AppError> {
+    let flags = sqlx::query_as::<_, FeatureFlag>(
+        "SELECT * FROM feature_flags WHERE project_id = $1 ORDER BY key",
+    )
+    .bind(project_id)
+    .fetch_all(db)
+    .await?;
+
+    if flags.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    let flag_ids: Vec<i64> = flags.iter().map(|f| f.id).collect();
+
+    // Load per-channel env settings if channel specified
+    let env_settings: std::collections::HashMap<i64, FlagEnvSetting> = if let Some(ch) = channel {
+        sqlx::query_as::<_, FlagEnvSetting>(
+            "SELECT * FROM flag_env_settings WHERE flag_id = ANY($1) AND channel_name = $2",
+        )
+        .bind(&flag_ids)
+        .bind(ch)
+        .fetch_all(db)
+        .await?
+        .into_iter()
+        .map(|s| (s.flag_id, s))
+        .collect()
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    // Fetch rules: channel-specific + global (NULL channel)
+    let rules = if let Some(ch) = channel {
+        sqlx::query_as::<_, FlagTargetingRule>(
+            "SELECT * FROM flag_targeting_rules
+             WHERE flag_id = ANY($1) AND (channel_name = $2 OR channel_name IS NULL)
+             ORDER BY flag_id, priority",
+        )
+        .bind(&flag_ids)
+        .bind(ch)
+        .fetch_all(db)
+        .await?
+    } else {
+        sqlx::query_as::<_, FlagTargetingRule>(
+            "SELECT * FROM flag_targeting_rules WHERE flag_id = ANY($1) ORDER BY flag_id, priority",
+        )
+        .bind(&flag_ids)
+        .fetch_all(db)
+        .await?
+    };
+
+    let mut rules_by_flag: std::collections::HashMap<i64, Vec<FlagTargetingRule>> =
+        std::collections::HashMap::new();
+    for rule in rules {
+        rules_by_flag.entry(rule.flag_id).or_default().push(rule);
+    }
+
+    // Fetch variations
+    let variations = sqlx::query_as::<_, FlagVariation>(
+        "SELECT * FROM flag_variations WHERE flag_id = ANY($1) ORDER BY flag_id, sort_order",
+    )
+    .bind(&flag_ids)
+    .fetch_all(db)
+    .await?;
+
+    let mut variations_by_flag: std::collections::HashMap<i64, Vec<FlagVariation>> =
+        std::collections::HashMap::new();
+    for v in variations {
+        variations_by_flag.entry(v.flag_id).or_default().push(v);
+    }
+
+    // Evaluate each flag (skip disabled flags -- SDK uses client-side defaults)
+    let mut results = std::collections::HashMap::new();
+    for flag in flags {
+        let (enabled, default_value) = if let Some(env) = env_settings.get(&flag.id) {
+            (env.enabled, env.default_value.clone())
+        } else {
+            (flag.enabled, flag.default_value.clone())
+        };
+
+        if !enabled {
+            continue;
+        }
+
+        let flag_rules = rules_by_flag.remove(&flag.id).unwrap_or_default();
+        let flag_variations = variations_by_flag.remove(&flag.id).unwrap_or_default();
+
+        let eval_flag = flag_evaluator::FlagWithRules {
+            key: flag.key.clone(),
+            flag_type: flag.flag_type.clone(),
+            default_value,
+            enabled,
+            rules: flag_rules
+                .into_iter()
+                .map(|r| flag_evaluator::RuleWithConfig {
+                    priority: r.priority,
+                    rule_type: r.rule_type,
+                    variant_value: r.variant_value,
+                    rule_config: r.rule_config,
+                })
+                .collect(),
+            variations: flag_variations
+                .into_iter()
+                .map(|v| flag_evaluator::Variation {
+                    id: v.id,
+                    value: v.value,
+                    name: v.name,
+                })
+                .collect(),
+        };
+
+        let result = flag_evaluator::evaluate_flag(&eval_flag, context);
+        results.insert(flag.key, result);
+    }
+
+    Ok(results)
+}
+
+/// POST /v1/ota/flag-evaluations-bulk
+///
+/// Evaluates all flags for a project/channel against the given device context
+/// and returns resolved values. Unauthenticated (OTA client route).
+pub async fn handle_bulk_eval(
+    State(state): State<AppState>,
+    Json(body): Json<BulkEvalRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let project_id = sqlx::query_scalar::<_, i64>(
+        "SELECT id FROM projects WHERE slug = $1",
+    )
+    .bind(&body.project_slug)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Project not found".into()))?;
+
+    // Build evaluation context from request
+    let mut attributes = body.attributes.unwrap_or_default();
+    if let Some(ref platform) = body.platform {
+        attributes.insert("platform".to_string(), serde_json::Value::String(platform.clone()));
+    }
+    if let Some(ref runtime_version) = body.runtime_version {
+        attributes.insert(
+            "runtime_version".to_string(),
+            serde_json::Value::String(runtime_version.clone()),
+        );
+    }
+    attributes.insert(
+        "device_id".to_string(),
+        serde_json::Value::String(body.device_id.clone()),
+    );
+
+    let context = flag_evaluator::EvalContext {
+        targeting_key: body.targeting_key.or(Some(body.device_id)),
+        attributes,
+    };
+
+    let results = evaluate_all_flags(
+        &state.db,
+        project_id,
+        body.channel.as_deref(),
+        &context,
+    )
+    .await?;
+
+    // Record evaluation counts (fire-and-forget to not block response)
+    if !results.is_empty() {
+        let db = state.db.clone();
+        let channel = body.channel.clone();
+        let flag_keys: Vec<String> = results.keys().cloned().collect();
+        let eval_results: Vec<(String, Option<i64>)> = results
+            .iter()
+            .map(|(k, r)| (k.clone(), r.variation_id))
+            .collect();
+        tokio::spawn(async move {
+            let today = chrono::Utc::now().date_naive();
+            // Resolve flag IDs from keys
+            let flags = sqlx::query_as::<_, (i64, String)>(
+                "SELECT id, key FROM feature_flags WHERE project_id = $1 AND key = ANY($2)",
+            )
+            .bind(project_id)
+            .bind(&flag_keys)
+            .fetch_all(&db)
+            .await;
+
+            if let Ok(flags) = flags {
+                let flag_map: std::collections::HashMap<String, i64> =
+                    flags.into_iter().map(|(id, key)| (key, id)).collect();
+                for (key, variation_id) in &eval_results {
+                    if let Some(&flag_id) = flag_map.get(key) {
+                        let _ = sqlx::query(
+                            "INSERT INTO flag_evaluation_counts (flag_id, variation_id, channel_name, date, count) \
+                             VALUES ($1, $2, $3, $4, 1) \
+                             ON CONFLICT (flag_id, variation_id, channel_name, date) \
+                             DO UPDATE SET count = flag_evaluation_counts.count + 1",
+                        )
+                        .bind(flag_id)
+                        .bind(*variation_id)
+                        .bind(&channel)
+                        .bind(today)
+                        .execute(&db)
+                        .await;
+                    }
+                }
+            }
+        });
+    }
+
+    Ok(Json(BulkEvalResponse { flags: results }))
+}
+
+// ── SSE flag stream (OTA client endpoint) ───────────────────────────────
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlagStreamParams {
+    pub channel: Option<String>,
+    pub device_id: String,
+    pub targeting_key: Option<String>,
+}
+
+/// GET /v1/ota/flag-stream/{project_slug}
+///
+/// Opens an SSE connection that immediately sends a `put` event with all
+/// evaluated flags, then streams subsequent `patch` and `delete` events
+/// when flags change. Unauthenticated (OTA client route).
+pub async fn handle_flag_stream(
+    State(state): State<AppState>,
+    Path(project_slug): Path<String>,
+    Query(params): Query<FlagStreamParams>,
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, AppError> {
+    let project_id = sqlx::query_scalar::<_, i64>(
+        "SELECT id FROM projects WHERE slug = $1",
+    )
+    .bind(&project_slug)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Project not found".into()))?;
+
+    let channel = params.channel.clone().unwrap_or_default();
+    let targeting_key_str = params.targeting_key.clone().unwrap_or_default();
+    let conn_key = (project_id, channel.clone(), targeting_key_str.clone());
+
+    // Build evaluation context for initial put
+    let mut attributes = serde_json::Map::new();
+    attributes.insert(
+        "device_id".to_string(),
+        serde_json::Value::String(params.device_id.clone()),
+    );
+
+    let context = flag_evaluator::EvalContext {
+        targeting_key: params.targeting_key.or(Some(params.device_id)),
+        attributes,
+    };
+
+    // Evaluate all flags for the initial put event
+    let initial_flags = evaluate_all_flags(
+        &state.db,
+        project_id,
+        if channel.is_empty() { None } else { Some(&channel) },
+        &context,
+    )
+    .await?;
+
+    let initial_data = serde_json::to_value(&BulkEvalResponse { flags: initial_flags })
+        .unwrap_or_default();
+
+    // Subscribe to the broadcast channel for subsequent events
+    let rx = state.flag_events.subscribe(conn_key.clone());
+
+    // Clean up connection on stream drop
+    let flag_events = state.flag_events.clone();
+    let cleanup_key = conn_key.clone();
+
+    // Create initial put event as a one-shot stream
+    let initial_event = tokio_stream::once(Ok::<_, Infallible>(
+        Event::default()
+            .event("put")
+            .data(serde_json::to_string(&initial_data).unwrap_or_default()),
+    ));
+
+    // Stream subsequent events from broadcast channel
+    let broadcast_stream = BroadcastStream::new(rx).filter_map(|result| match result {
+        Ok(event) => {
+            let data = serde_json::to_string(&event).unwrap_or_default();
+            let event_type = match &event {
+                FlagEvent::Put { .. } => "put",
+                FlagEvent::Patch { .. } => "patch",
+                FlagEvent::Delete { .. } => "delete",
+            };
+            Some(Ok(Event::default().event(event_type).data(data)))
+        }
+        Err(_) => None, // lagged -- skip
+    });
+
+    // Combine initial event + broadcast stream, with cleanup on drop
+    let stream = initial_event.chain(broadcast_stream);
+
+    // Wrap in a stream that cleans up the connection on drop
+    let stream = CleanupStream {
+        inner: Box::pin(stream),
+        flag_events: Some(flag_events),
+        conn_key: Some(cleanup_key),
+    };
+
+    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+}
+
+/// Wrapper stream that removes the connection from FlagEventRegistry when dropped.
+struct CleanupStream<S> {
+    inner: std::pin::Pin<Box<S>>,
+    flag_events: Option<crate::flag_events::FlagEventRegistry>,
+    conn_key: Option<crate::flag_events::ConnKey>,
+}
+
+impl<S> Drop for CleanupStream<S> {
+    fn drop(&mut self) {
+        if let (Some(registry), Some(key)) = (self.flag_events.take(), self.conn_key.take()) {
+            registry.remove(&key);
+        }
+    }
+}
+
+impl<S> tokio_stream::Stream for CleanupStream<S>
+where
+    S: tokio_stream::Stream + Unpin,
+{
+    type Item = S::Item;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.inner.as_mut().poll_next(cx)
+    }
 }

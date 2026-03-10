@@ -16,6 +16,7 @@ use tracing::Level;
 
 use crate::config::Config;
 use crate::execution_events::ExecutionEventRegistry;
+use crate::flag_events::FlagEventRegistry;
 use crate::handlers::analytics::{handle_adoption_timeseries, handle_get_update_insights, handle_list_insights};
 use crate::handlers::branches::{
     handle_create_branch, handle_create_channel, handle_delete_branch, handle_delete_channel,
@@ -60,10 +61,11 @@ use crate::handlers::segments::{
     handle_update_segment, handle_delete_segment,
 };
 use crate::handlers::feature_flags::{
-    handle_create_flag, handle_create_rule, handle_delete_flag, handle_delete_rule,
-    handle_get_flag, handle_get_flag_definitions, handle_get_flag_health, handle_list_flags,
-    handle_patch_env_setting, handle_get_flag_evaluations, handle_patch_flag, handle_patch_rule,
-    handle_patch_variation, handle_report_evaluations,
+    handle_bulk_eval, handle_create_flag, handle_create_rule, handle_delete_flag,
+    handle_delete_rule, handle_flag_stream, handle_get_flag, handle_get_flag_definitions,
+    handle_get_flag_health, handle_list_flags, handle_patch_env_setting,
+    handle_get_flag_evaluations, handle_patch_flag, handle_patch_rule, handle_patch_variation,
+    handle_report_evaluations,
 };
 use crate::handlers::telemetry::{
     handle_flag_impacts, handle_get_performance_metrics, handle_telemetry_events,
@@ -81,6 +83,7 @@ pub struct AppState {
     pub config: Config,
     pub private_key: Option<RsaPrivateKey>,
     pub execution_events: ExecutionEventRegistry,
+    pub flag_events: FlagEventRegistry,
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -94,6 +97,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/manifest/{project_slug}", get(handle_get_manifest))
         .route("/assets/{*key}", get(handle_proxy_asset))
         .route("/flag-definitions/{project_slug}", get(handle_get_flag_definitions))
+        .route("/flag-evaluations-bulk", post(handle_bulk_eval))
+        .route("/flag-stream/{project_slug}", get(handle_flag_stream))
         .route("/health-metrics", post(handle_report_health_metrics));
 
     // Public routes — no auth required
