@@ -41,6 +41,14 @@ fn default_count() -> i32 {
     1
 }
 
+/// Slim ingestion handler: fast INSERT only, no aggregation.
+///
+/// Routes events by type:
+/// - "perf_sample" -> performance_samples table
+/// - everything else -> health_events_raw table
+///
+/// All aggregation (hourly, anomaly detection, daily stats, flag health snapshots)
+/// is handled by the background aggregator task.
 pub async fn handle_report_health_metrics(
     State(state): State<AppState>,
     Json(body): Json<HealthMetricsRequest>,
@@ -56,190 +64,107 @@ pub async fn handle_report_health_metrics(
     .map_err(|e| { tracing::error!(error = %e, "Step 1: project lookup failed"); AppError::Internal(e.to_string()) })?
     .ok_or_else(|| { tracing::warn!(slug = %body.project_slug, "Step 1: project not found"); AppError::NotFound("Project not found".into()) })?;
 
-    // 2. Insert raw events
+    // 2. Insert events -- route by event_type
     for event in &body.events {
-        sqlx::query(
-            "INSERT INTO health_events_raw \
-             (project_id, update_uuid, device_id, channel_name, platform, \
-              runtime_version, event_type, event_name, event_message, count, flag_states, \
-              stack_trace, error_name, component_stack, is_fatal, tags) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
-        )
-        .bind(project_id)
-        .bind(&body.update_uuid)
-        .bind(&body.device_id)
-        .bind(&body.channel)
-        .bind(&body.platform)
-        .bind(&body.runtime_version)
-        .bind(&event.event_type)
-        .bind(&event.name)
-        .bind(&event.message)
-        .bind(event.count)
-        .bind(&event.flag_states)
-        .bind(&event.stack_trace)
-        .bind(&event.error_name)
-        .bind(&event.component_stack)
-        .bind(event.is_fatal)
-        .bind(&event.tags)
-        .execute(&state.db)
-        .await
-        .map_err(|e| { tracing::error!(error = %e, event_type = %event.event_type, "Step 2: raw event insert failed"); AppError::Internal(e.to_string()) })?;
-    }
-
-    // 3. Upsert hourly aggregates
-    let now = chrono::Utc::now();
-    let bucket_hour = now
-        .date_naive()
-        .and_hms_opt(now.time().hour(), 0, 0)
-        .unwrap()
-        .and_utc();
-
-    // Normalize NULL update_uuid to empty string so the UNIQUE constraint
-    // works correctly (NULL != NULL in Postgres, breaking ON CONFLICT).
-    let update_uuid_normalized = body.update_uuid.clone().unwrap_or_default();
-
-    for event in &body.events {
-        sqlx::query(
-            "INSERT INTO health_events_hourly \
-             (project_id, bucket_hour, channel_name, platform, runtime_version, \
-              update_uuid, event_type, event_name, total_count, unique_devices) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1) \
-             ON CONFLICT (project_id, bucket_hour, channel_name, platform, \
-                          runtime_version, update_uuid, event_type, event_name) \
-             DO UPDATE SET total_count = health_events_hourly.total_count + EXCLUDED.total_count, \
-               unique_devices = health_events_hourly.unique_devices + 1",
-        )
-        .bind(project_id)
-        .bind(bucket_hour)
-        .bind(&body.channel)
-        .bind(&body.platform)
-        .bind(&body.runtime_version)
-        .bind(&update_uuid_normalized)
-        .bind(&event.event_type)
-        .bind(&event.name)
-        .bind(event.count as i64)
-        .execute(&state.db)
-        .await
-        .map_err(|e| { tracing::error!(error = %e, event_type = %event.event_type, "Step 3: hourly upsert failed"); AppError::Internal(e.to_string()) })?;
-    }
-
-    // 4. Lightweight anomaly detection
-    let error_count = sqlx::query_scalar::<_, Option<i64>>(
-        "SELECT SUM(total_count)::BIGINT FROM health_events_hourly \
-         WHERE project_id = $1 AND event_type IN ('js_error', 'crash') \
-         AND bucket_hour = $2 AND channel_name IS NOT DISTINCT FROM $3",
-    )
-    .bind(project_id)
-    .bind(bucket_hour)
-    .bind(&body.channel)
-    .fetch_one(&state.db)
-    .await?;
-
-    if let Some(current) = error_count {
-        if current > 5 {
-            // Only check anomaly if we have a meaningful sample
-            let avg_24h = sqlx::query_scalar::<_, Option<f64>>(
-                "SELECT AVG(total_count)::DOUBLE PRECISION FROM health_events_hourly \
-                 WHERE project_id = $1 AND event_type IN ('js_error', 'crash') \
-                 AND bucket_hour >= $2 AND bucket_hour < $3 \
-                 AND channel_name IS NOT DISTINCT FROM $4",
-            )
-            .bind(project_id)
-            .bind(bucket_hour - chrono::Duration::hours(24))
-            .bind(bucket_hour)
-            .bind(&body.channel)
-            .fetch_one(&state.db)
-            .await?;
-
-            if let Some(avg) = avg_24h {
-                if avg > 0.0 && (current as f64) > avg * 2.0 {
-                    try_insert_anomaly(
-                        &state.db,
-                        project_id,
-                        &body,
-                        current,
-                        avg,
-                        bucket_hour,
-                    )
-                    .await
-                    .ok(); // Best-effort, don't fail the request
-                }
-            }
+        if event.event_type == "perf_sample" {
+            insert_performance_sample(&state.db, project_id, &body, event).await?;
+        } else {
+            insert_raw_health_event(&state.db, project_id, &body, event).await?;
         }
-    }
-
-    // 5. Upsert daily stats for telemetry timeseries
-    let today = now.date_naive();
-    let total_events: i64 = body.events.iter().map(|e| e.count as i64).sum();
-    let error_events: i64 = body
-        .events
-        .iter()
-        .filter(|e| e.event_type == "js_error" || e.event_type == "crash")
-        .map(|e| e.count as i64)
-        .sum();
-    let launch_events: i64 = body
-        .events
-        .iter()
-        .filter(|e| e.event_type == "app_launch")
-        .map(|e| e.count as i64)
-        .sum();
-
-    if total_events > 0 {
-        sqlx::query(
-            "INSERT INTO telemetry_daily_stats \
-             (project_id, date, channel_name, total_errors, total_launches, \
-              error_rate, crash_free, flag_evals, update_installs) \
-             VALUES ($1, $2, $3, $4, $5, \
-              CASE WHEN $5 > 0 THEN ($4::float / $5::float) * 100 ELSE 0 END, \
-              CASE WHEN $5 > 0 THEN 100 - ($4::float / $5::float) * 100 ELSE 100 END, \
-              0, $6) \
-             ON CONFLICT (project_id, date, channel_name) \
-             DO UPDATE SET \
-               total_errors = telemetry_daily_stats.total_errors + EXCLUDED.total_errors, \
-               total_launches = telemetry_daily_stats.total_launches + EXCLUDED.total_launches, \
-               error_rate = CASE WHEN (telemetry_daily_stats.total_launches + EXCLUDED.total_launches) > 0 \
-                 THEN ((telemetry_daily_stats.total_errors + EXCLUDED.total_errors)::float / \
-                       (telemetry_daily_stats.total_launches + EXCLUDED.total_launches)::float) * 100 \
-                 ELSE 0 END, \
-               crash_free = CASE WHEN (telemetry_daily_stats.total_launches + EXCLUDED.total_launches) > 0 \
-                 THEN 100 - ((telemetry_daily_stats.total_errors + EXCLUDED.total_errors)::float / \
-                             (telemetry_daily_stats.total_launches + EXCLUDED.total_launches)::float) * 100 \
-                 ELSE 100 END, \
-               update_installs = telemetry_daily_stats.update_installs + EXCLUDED.update_installs",
-        )
-        .bind(project_id)
-        .bind(today)
-        .bind(&body.channel)
-        .bind(error_events)
-        .bind(launch_events)
-        .bind(launch_events)
-        .execute(&state.db)
-        .await?;
-    }
-
-    // 6. Upsert flag_health_snapshots from flag_states (connects to flag health UI)
-    if let Err(e) = upsert_flag_health_snapshots(
-        &state.db,
-        project_id,
-        &body,
-    )
-    .await
-    {
-        tracing::error!(error = %e, "Step 6: flag health snapshot upsert failed");
     }
 
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Upsert flag_health_snapshots using a 24h rolling window from health_events_raw.
-/// Computes per-variation error rates: for each distinct variation value seen in the
-/// window, counts errors vs total events where that variation was active.
-async fn upsert_flag_health_snapshots(
+/// Insert a raw health event into health_events_raw.
+async fn insert_raw_health_event(
     db: &sqlx::PgPool,
     project_id: i64,
     body: &HealthMetricsRequest,
+    event: &HealthEventPayload,
 ) -> Result<(), AppError> {
-    let channel = body.channel.as_deref().unwrap_or("default");
+    sqlx::query(
+        "INSERT INTO health_events_raw \
+         (project_id, update_uuid, device_id, channel_name, platform, \
+          runtime_version, event_type, event_name, event_message, count, flag_states, \
+          stack_trace, error_name, component_stack, is_fatal, tags) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
+    )
+    .bind(project_id)
+    .bind(&body.update_uuid)
+    .bind(&body.device_id)
+    .bind(&body.channel)
+    .bind(&body.platform)
+    .bind(&body.runtime_version)
+    .bind(&event.event_type)
+    .bind(&event.name)
+    .bind(&event.message)
+    .bind(event.count)
+    .bind(&event.flag_states)
+    .bind(&event.stack_trace)
+    .bind(&event.error_name)
+    .bind(&event.component_stack)
+    .bind(event.is_fatal)
+    .bind(&event.tags)
+    .execute(db)
+    .await
+    .map_err(|e| { tracing::error!(error = %e, event_type = %event.event_type, "Raw event insert failed"); AppError::Internal(e.to_string()) })?;
+
+    Ok(())
+}
+
+/// Insert a performance timing sample into performance_samples.
+/// Parses duration_ms from tags.duration_ms, metric_name from event.name.
+async fn insert_performance_sample(
+    db: &sqlx::PgPool,
+    project_id: i64,
+    body: &HealthMetricsRequest,
+    event: &HealthEventPayload,
+) -> Result<(), AppError> {
+    let metric_name = event.name.as_deref().unwrap_or("unknown");
+    let duration_ms = event
+        .tags
+        .as_ref()
+        .and_then(|t| t.get("duration_ms"))
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(0.0);
+
+    sqlx::query(
+        "INSERT INTO performance_samples \
+         (project_id, device_id, channel_name, platform, runtime_version, \
+          metric_name, duration_ms) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(project_id)
+    .bind(&body.device_id)
+    .bind(&body.channel)
+    .bind(&body.platform)
+    .bind(&body.runtime_version)
+    .bind(metric_name)
+    .bind(duration_ms)
+    .execute(db)
+    .await
+    .map_err(|e| { tracing::error!(error = %e, metric = metric_name, "Performance sample insert failed"); AppError::Internal(e.to_string()) })?;
+
+    Ok(())
+}
+
+// ---- Aggregation functions below ----
+// These are kept here temporarily. They will be moved to jobs/aggregator.rs in Task 2
+// and then removed from this file.
+
+/// Upsert flag_health_snapshots using a 24h rolling window from health_events_raw.
+/// Computes per-variation error rates: for each distinct variation value seen in the
+/// window, counts errors vs total events where that variation was active.
+#[allow(dead_code)]
+pub(crate) async fn upsert_flag_health_snapshots(
+    db: &sqlx::PgPool,
+    project_id: i64,
+    channel: Option<&str>,
+    runtime_version: &str,
+) -> Result<(), AppError> {
+    let channel_str = channel.unwrap_or("default");
     let now = chrono::Utc::now();
     let window_start = now - chrono::Duration::hours(24);
 
@@ -266,7 +191,7 @@ async fn upsert_flag_health_snapshots(
         .bind(project_id)
         .bind(flag_key)
         .bind(window_start)
-        .bind(&body.channel)
+        .bind(channel)
         .fetch_all(db)
         .await?;
 
@@ -277,8 +202,6 @@ async fn upsert_flag_health_snapshots(
         for (var_value,) in &variation_values {
             let var_str = var_value.to_string().trim_matches('"').to_string();
 
-            // App launches where this flag had this specific variation (denominator).
-            // The SDK sends flag_states on app_launch events so we get per-variation counts.
             let launches_for_variation = sqlx::query_scalar::<_, Option<i64>>(
                 "SELECT SUM(count)::BIGINT FROM health_events_raw \
                  WHERE project_id = $1 AND received_at >= $2 \
@@ -288,7 +211,7 @@ async fn upsert_flag_health_snapshots(
             )
             .bind(project_id)
             .bind(window_start)
-            .bind(&body.channel)
+            .bind(channel)
             .bind(flag_key)
             .bind(&var_str)
             .fetch_one(db)
@@ -299,7 +222,6 @@ async fn upsert_flag_health_snapshots(
                 continue;
             }
 
-            // JS error events for this variation (numerator for error_rate)
             let js_errors_for_variation = sqlx::query_scalar::<_, Option<i64>>(
                 "SELECT SUM(count)::BIGINT FROM health_events_raw \
                  WHERE project_id = $1 AND received_at >= $2 \
@@ -309,14 +231,13 @@ async fn upsert_flag_health_snapshots(
             )
             .bind(project_id)
             .bind(window_start)
-            .bind(&body.channel)
+            .bind(channel)
             .bind(flag_key)
             .bind(&var_str)
             .fetch_one(db)
             .await?
             .unwrap_or(0);
 
-            // Crash events for this variation (numerator for crash_free)
             let crashes_for_variation = sqlx::query_scalar::<_, Option<i64>>(
                 "SELECT SUM(count)::BIGINT FROM health_events_raw \
                  WHERE project_id = $1 AND received_at >= $2 \
@@ -326,21 +247,18 @@ async fn upsert_flag_health_snapshots(
             )
             .bind(project_id)
             .bind(window_start)
-            .bind(&body.channel)
+            .bind(channel)
             .bind(flag_key)
             .bind(&var_str)
             .fetch_one(db)
             .await?
             .unwrap_or(0);
 
-            // error_rate = % of launches that had at least one error, capped at 100
             let error_rate_raw = (js_errors_for_variation + crashes_for_variation) as f64 / launches_for_variation as f64 * 100.0;
             let error_rate = (error_rate_raw.min(100.0) * 100.0).round() / 100.0;
-            // crash_free = % of launches with no crashes
             let crash_rate_raw = crashes_for_variation as f64 / launches_for_variation as f64 * 100.0;
             let crash_free = ((100.0 - crash_rate_raw).max(0.0).min(100.0) * 100.0).round() / 100.0;
 
-            // Unique devices for this variation
             let devices = sqlx::query_scalar::<_, Option<i64>>(
                 "SELECT COUNT(DISTINCT device_id) FROM health_events_raw \
                  WHERE project_id = $1 AND received_at >= $2 \
@@ -349,14 +267,13 @@ async fn upsert_flag_health_snapshots(
             )
             .bind(project_id)
             .bind(window_start)
-            .bind(&body.channel)
+            .bind(channel)
             .bind(flag_key)
             .bind(&var_str)
             .fetch_one(db)
             .await?
             .unwrap_or(0);
 
-            // Resolve variation_id
             let variation_id = sqlx::query_scalar::<_, i64>(
                 "SELECT id FROM flag_variations WHERE flag_id = $1 AND value = $2::jsonb",
             )
@@ -365,7 +282,6 @@ async fn upsert_flag_health_snapshots(
             .fetch_optional(db)
             .await?;
 
-            // Get previous error rate for delta (per variation)
             let prev_error_rate = sqlx::query_scalar::<_, Option<f64>>(
                 "SELECT error_rate FROM flag_health_snapshots \
                  WHERE flag_id = $1 AND channel_name = $2 \
@@ -373,14 +289,12 @@ async fn upsert_flag_health_snapshots(
                  ORDER BY recorded_at DESC LIMIT 1",
             )
             .bind(flag_id)
-            .bind(channel)
+            .bind(channel_str)
             .bind(variation_id)
             .fetch_one(db)
             .await
             .unwrap_or(None);
 
-            // Both error_rate and prev are already percentages (e.g., 5.0 = 5%)
-            // Delta is the raw difference in percentage points, rounded to 2 decimal places
             let error_rate_delta = prev_error_rate.map(|prev| ((error_rate - prev) * 100.0).round() / 100.0).unwrap_or(0.0);
 
             let status = if error_rate > 10.0 {
@@ -399,8 +313,8 @@ async fn upsert_flag_health_snapshots(
             )
             .bind(flag_id)
             .bind(variation_id)
-            .bind(channel)
-            .bind(&body.runtime_version)
+            .bind(channel_str)
+            .bind(runtime_version)
             .bind(devices as i32)
             .bind(error_rate)
             .bind(error_rate_delta)
@@ -415,10 +329,11 @@ async fn upsert_flag_health_snapshots(
 }
 
 /// Best-effort anomaly insertion into telemetry_events
-async fn try_insert_anomaly(
+#[allow(dead_code)]
+pub(crate) async fn try_insert_anomaly(
     db: &sqlx::PgPool,
     project_id: i64,
-    body: &HealthMetricsRequest,
+    channel: Option<&str>,
     current_count: i64,
     avg_count: f64,
     bucket_hour: chrono::DateTime<chrono::Utc>,
@@ -476,7 +391,7 @@ async fn try_insert_anomaly(
     } else {
         "degraded"
     };
-    let channel_label = body.channel.as_deref().unwrap_or("default");
+    let channel_label = channel.unwrap_or("default");
 
     sqlx::query(
         "INSERT INTO telemetry_events \
@@ -501,4 +416,119 @@ async fn try_insert_anomaly(
     Ok(())
 }
 
-use chrono::Timelike;
+/// Upsert hourly aggregates from events.
+/// Used by the background aggregator to compute hourly buckets from raw events.
+#[allow(dead_code)]
+pub(crate) async fn upsert_hourly_aggregates(
+    db: &sqlx::PgPool,
+    project_id: i64,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use chrono::Timelike;
+
+    // Get recent raw events (last 10 minutes with overlap for safety)
+    let rows = sqlx::query_as::<_, (String, Option<String>, Option<String>, String, String, Option<String>, chrono::DateTime<chrono::Utc>, i32, String)>(
+        "SELECT event_type, event_name, channel_name, platform, runtime_version, update_uuid, received_at, count, device_id \
+         FROM health_events_raw WHERE project_id = $1 AND received_at > NOW() - INTERVAL '10 minutes'",
+    )
+    .bind(project_id)
+    .fetch_all(db)
+    .await?;
+
+    for (event_type, event_name, channel_name, platform, runtime_version, update_uuid, received_at, count, _device_id) in &rows {
+        let bucket_hour = received_at
+            .date_naive()
+            .and_hms_opt(received_at.time().hour(), 0, 0)
+            .unwrap()
+            .and_utc();
+
+        let update_uuid_normalized = update_uuid.clone().unwrap_or_default();
+
+        sqlx::query(
+            "INSERT INTO health_events_hourly \
+             (project_id, bucket_hour, channel_name, platform, runtime_version, \
+              update_uuid, event_type, event_name, total_count, unique_devices) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1) \
+             ON CONFLICT (project_id, bucket_hour, channel_name, platform, \
+                          runtime_version, update_uuid, event_type, event_name) \
+             DO UPDATE SET total_count = health_events_hourly.total_count + EXCLUDED.total_count, \
+               unique_devices = health_events_hourly.unique_devices + 1",
+        )
+        .bind(project_id)
+        .bind(bucket_hour)
+        .bind(channel_name)
+        .bind(platform)
+        .bind(runtime_version)
+        .bind(&update_uuid_normalized)
+        .bind(event_type)
+        .bind(event_name)
+        .bind(*count as i64)
+        .execute(db)
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// Upsert daily stats from hourly aggregates.
+#[allow(dead_code)]
+pub(crate) async fn upsert_daily_stats(
+    db: &sqlx::PgPool,
+    project_id: i64,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let today = chrono::Utc::now().date_naive();
+
+    // Compute totals from hourly data for today
+    let rows = sqlx::query_as::<_, (Option<String>, String, Option<i64>)>(
+        "SELECT channel_name, event_type, SUM(total_count)::BIGINT as total \
+         FROM health_events_hourly \
+         WHERE project_id = $1 AND bucket_hour::date = $2 \
+         GROUP BY channel_name, event_type",
+    )
+    .bind(project_id)
+    .bind(today)
+    .fetch_all(db)
+    .await?;
+
+    // Aggregate by channel
+    let mut channel_stats: std::collections::HashMap<Option<String>, (i64, i64, i64)> =
+        std::collections::HashMap::new();
+    for (channel, event_type, total) in &rows {
+        let total = total.unwrap_or(0);
+        let entry = channel_stats.entry(channel.clone()).or_insert((0, 0, 0));
+        match event_type.as_str() {
+            "js_error" | "crash" => entry.0 += total,
+            "app_launch" => entry.1 += total,
+            _ => {}
+        }
+        entry.2 += total;
+    }
+
+    for (channel, (errors, launches, _total)) in &channel_stats {
+        if *launches > 0 || *errors > 0 {
+            sqlx::query(
+                "INSERT INTO telemetry_daily_stats \
+                 (project_id, date, channel_name, total_errors, total_launches, \
+                  error_rate, crash_free, flag_evals, update_installs) \
+                 VALUES ($1, $2, $3, $4, $5, \
+                  CASE WHEN $5 > 0 THEN ($4::float / $5::float) * 100 ELSE 0 END, \
+                  CASE WHEN $5 > 0 THEN 100 - ($4::float / $5::float) * 100 ELSE 100 END, \
+                  0, 0) \
+                 ON CONFLICT (project_id, date, channel_name) \
+                 DO UPDATE SET \
+                   total_errors = EXCLUDED.total_errors, \
+                   total_launches = EXCLUDED.total_launches, \
+                   error_rate = EXCLUDED.error_rate, \
+                   crash_free = EXCLUDED.crash_free",
+            )
+            .bind(project_id)
+            .bind(today)
+            .bind(channel)
+            .bind(*errors)
+            .bind(*launches)
+            .execute(db)
+            .await?;
+        }
+    }
+
+    Ok(())
+}
