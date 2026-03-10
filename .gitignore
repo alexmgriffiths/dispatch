@@ -1,3 +1,4 @@
 /target
 TODO.md
 node_modules/
+.env

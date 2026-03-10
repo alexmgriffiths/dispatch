@@ -37,6 +37,7 @@ export default function UpdatesList({ onPublish }: Props) {
   const [updates, setUpdates] = useState<UpdateRecord[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true)
   const [selectedUpdate, setSelectedUpdate] = useState<UpdateRecord | null>(null)
 
   // Filters
@@ -127,6 +128,7 @@ export default function UpdatesList({ onPublish }: Props) {
       setError(e instanceof Error ? e.message : 'Failed to load updates')
     } finally {
       setLoading(false)
+      setInitialLoad(false)
     }
   }
 
@@ -341,7 +343,7 @@ export default function UpdatesList({ onPublish }: Props) {
           <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
         )}
 
-        {loading ? (
+        {loading && initialLoad ? null : loading ? (
           <div className="space-y-3">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="rounded-xl border bg-card p-4 space-y-3">

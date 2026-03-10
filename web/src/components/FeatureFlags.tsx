@@ -144,6 +144,7 @@ export default function FeatureFlags({ initialFlagKey, onFlagSelected }: { initi
   const [flags, setFlags] = useState<FlagListItemRecord[]>([])
   const [channels, setChannels] = useState<ChannelRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [selectedFlag, setSelectedFlag] = useState<FlagWithDetailsRecord | null>(null)
   const [search, setSearch] = useState('')
@@ -231,6 +232,7 @@ export default function FeatureFlags({ initialFlagKey, onFlagSelected }: { initi
       setFlagHealthCache(Object.fromEntries(healthEntries))
     } finally {
       setLoading(false)
+      setInitialLoad(false)
     }
   }
 
@@ -1889,7 +1891,7 @@ export default function FeatureFlags({ initialFlagKey, onFlagSelected }: { initi
 
       {/* Flag list */}
       <div className="flex-1 overflow-y-auto">
-        {loading ? (
+        {loading && initialLoad ? null : loading ? (
           <div className="space-y-0 divide-y">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="flex items-center gap-4 px-8 py-4">

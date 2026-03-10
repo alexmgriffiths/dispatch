@@ -15,6 +15,7 @@ import Contexts from './components/Contexts'
 import RolloutPolicies from './components/RolloutPolicies'
 import Telemetry from './components/Telemetry'
 import Observe from './components/Observe'
+import Performance from './components/Performance'
 import DispatchLogo from './components/DispatchLogo'
 import WelcomeModal, { WELCOME_SEEN_KEY } from './components/WelcomeModal'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -41,10 +42,11 @@ import {
   Eye,
   Bug,
   AlertTriangle,
+  Gauge,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type Page = 'updates' | 'builds' | 'publish' | 'adoption' | 'telemetry' | 'audit' | 'settings' | 'flags' | 'contexts' | 'guide' | 'playbooks' | 'rollouts' | 'policies' | 'observe'
+type Page = 'updates' | 'builds' | 'publish' | 'adoption' | 'telemetry' | 'audit' | 'settings' | 'flags' | 'contexts' | 'guide' | 'playbooks' | 'rollouts' | 'policies' | 'observe' | 'performance'
 
 const GUIDE_DISMISSED_KEY = 'dispatch-guide-dismissed'
 
@@ -63,6 +65,7 @@ const PAGE_PATHS: Record<Page, string> = {
   rollouts: '/rollouts',
   policies: '/policies',
   observe: '/observe',
+  performance: '/performance',
 }
 const PATH_TO_PAGE: Record<string, Page> = Object.fromEntries(
   Object.entries(PAGE_PATHS).map(([page, path]) => [path, page as Page])
@@ -236,6 +239,7 @@ function App() {
 
   const observeNavItems: { page: Page; label: string; icon: React.ReactNode }[] = [
     { page: 'observe', label: 'Observe', icon: <Eye className="h-4 w-4" /> },
+    { page: 'performance', label: 'Performance', icon: <Gauge className="h-4 w-4" /> },
   ]
 
   const insightsNavItems: { page: Page; label: string; icon: React.ReactNode }[] = [
@@ -442,6 +446,7 @@ function App() {
         {page === 'rollouts' && <RolloutPolicies defaultTab="executions" />}
         {page === 'policies' && <RolloutPolicies defaultTab="policies" />}
         {page === 'observe' && <Observe />}
+        {page === 'performance' && <Performance />}
       </main>
     </div>
     </TooltipProvider>

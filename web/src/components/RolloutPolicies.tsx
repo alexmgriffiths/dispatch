@@ -499,6 +499,7 @@ export default function RolloutPolicies({ defaultTab = 'executions' }: { default
   const [policies, setPolicies] = useState<Policy[]>(USE_MOCK ? MOCK_POLICIES : [])
   const [executions, setExecutions] = useState<Execution[]>(USE_MOCK ? MOCK_EXECUTIONS : [])
   const [loading, setLoading] = useState(!USE_MOCK)
+  const [initialLoad, setInitialLoad] = useState(!USE_MOCK)
   const [selectedPolicy, setSelectedPolicy] = useState<Policy | null>(null)
   const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null)
   const [showCreatePolicy, setShowCreatePolicy] = useState(false)
@@ -545,7 +546,7 @@ export default function RolloutPolicies({ defaultTab = 'executions' }: { default
     async function load() {
       setLoading(true)
       await Promise.all([fetchPolicies(), fetchExecutions()])
-      if (!cancelled) setLoading(false)
+      if (!cancelled) { setLoading(false); setInitialLoad(false) }
     }
     load()
     return () => { cancelled = true }
@@ -1675,7 +1676,7 @@ export default function RolloutPolicies({ defaultTab = 'executions' }: { default
 
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
 
-      {loading && (
+      {loading && !initialLoad && (
         <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
           Loading...
         </div>

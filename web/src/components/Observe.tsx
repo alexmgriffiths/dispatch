@@ -53,6 +53,7 @@ export default function Observe() {
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true)
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [counts, setCounts] = useState<{ errors: number; crashes: number; events: number }>({ errors: 0, crashes: 0, events: 0 })
 
@@ -98,6 +99,7 @@ export default function Observe() {
       console.error('Failed to load observe data', e)
     } finally {
       setLoading(false)
+      setInitialLoad(false)
     }
   }, [tab, search, channelFilter, platformFilter, offset, config.eventType])
 
@@ -183,7 +185,7 @@ export default function Observe() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
         {/* Summary cards — hidden when truly empty */}
-        {(total > 0 || search || channelFilter || platformFilter || loading) && <div className="grid grid-cols-3 gap-3">
+        {(total > 0 || search || channelFilter || platformFilter || (loading && !initialLoad)) && <div className="grid grid-cols-3 gap-3">
           <button
             className={cn(
               'rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/30 cursor-pointer',
@@ -225,10 +227,12 @@ export default function Observe() {
           </button>
         </div>}
 
-        {loading ? (
+        {loading && !initialLoad ? (
           <div className="flex items-center justify-center py-20">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
+        ) : loading && initialLoad ? (
+          null
         ) : total === 0 ? (
           (search || channelFilter || platformFilter) ? (
             <div className="flex flex-col items-center justify-center py-24">

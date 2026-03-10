@@ -74,6 +74,7 @@ interface Props {
 export default function PublishUpdate({ preselectedBuildId, onPublished }: Props) {
   const [builds, setBuilds] = useState<BuildRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true)
   const [selectedBuildIds, setSelectedBuildIds] = useState<Set<number>>(
     () => preselectedBuildId ? new Set([preselectedBuildId]) : new Set()
   )
@@ -134,6 +135,7 @@ export default function PublishUpdate({ preselectedBuildId, onPublished }: Props
       setError(e instanceof Error ? e.message : 'Failed to load builds')
     } finally {
       setLoading(false)
+      setInitialLoad(false)
     }
   }
 
@@ -267,7 +269,7 @@ export default function PublishUpdate({ preselectedBuildId, onPublished }: Props
             <div className="max-w-2xl space-y-3">
               {error && <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
 
-              {loading ? (
+              {loading && initialLoad ? null : loading ? (
                 <div className="space-y-2">
                   {[...Array(3)].map((_, i) => (
                     <div key={i} className="flex items-center gap-3 rounded-lg border p-3">

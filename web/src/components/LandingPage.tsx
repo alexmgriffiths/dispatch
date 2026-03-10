@@ -311,12 +311,12 @@ export default function LandingPage({ onSignIn, onSetup, needsSetup }: Props) {
               {
                 step: '1',
                 title: 'Deploy code',
-                code: '$ dispatch publish --channel production --rollout 5% \\\n    --linked-flags new-checkout -m "New checkout flow"',
+                code: '$ dispatch publish --channel production --rollout 10 \\\n    -m "New checkout flow"',
               },
               {
                 step: '2',
-                title: 'Measure impact',
-                desc: 'AppDispatch tracks error rates and crash-free percentages per flag variation and release version. If the new-checkout=true variation spikes errors, you\'ll know instantly.',
+                title: 'Link flags & measure impact',
+                desc: 'Link the new-checkout flag to the release from the dashboard — it activates only for devices that have the code. AppDispatch tracks error rates per flag variation and release version automatically.',
               },
               {
                 step: '3',

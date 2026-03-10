@@ -16,6 +16,7 @@ export default function BuildsList({ onPublish }: Props) {
   const [builds, setBuilds] = useState<BuildRecord[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true)
 
   useEffect(() => {
     loadBuilds()
@@ -31,6 +32,7 @@ export default function BuildsList({ onPublish }: Props) {
       setError(e instanceof Error ? e.message : 'Failed to load builds')
     } finally {
       setLoading(false)
+      setInitialLoad(false)
     }
   }
 
@@ -61,7 +63,7 @@ export default function BuildsList({ onPublish }: Props) {
           <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
         )}
 
-        {loading ? (
+        {loading && initialLoad ? null : loading ? (
           <div className="space-y-2">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="flex items-start justify-between gap-4 rounded-xl border bg-card p-4">

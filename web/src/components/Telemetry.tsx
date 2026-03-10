@@ -38,6 +38,7 @@ export default function Telemetry({ onNavigate }: { onNavigate?: (page: string) 
   const [impacts, setImpacts] = useState<TelemetryFlagImpact[]>([])
   const [events, setEvents] = useState<TelemetryEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true)
   const [selectedFlag, setSelectedFlag] = useState<string>('all')
   const [selectedChannel, setSelectedChannel] = useState<string>('all')
 
@@ -56,6 +57,7 @@ export default function Telemetry({ onNavigate }: { onNavigate?: (page: string) 
       setEvents(ev)
     } finally {
       setLoading(false)
+      setInitialLoad(false)
     }
   }
 
@@ -129,7 +131,9 @@ export default function Telemetry({ onNavigate }: { onNavigate?: (page: string) 
         </div>
       </div>
 
-      {loading ? (
+      {loading && initialLoad ? (
+        <div className="flex-1" />
+      ) : loading ? (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
