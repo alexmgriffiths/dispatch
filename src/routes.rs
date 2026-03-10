@@ -66,7 +66,8 @@ use crate::handlers::feature_flags::{
     handle_patch_variation, handle_report_evaluations,
 };
 use crate::handlers::telemetry::{
-    handle_flag_impacts, handle_telemetry_events, handle_telemetry_timeseries,
+    handle_flag_impacts, handle_get_performance_metrics, handle_telemetry_events,
+    handle_telemetry_timeseries,
 };
 use crate::handlers::upload::{
     handle_create_update, handle_delete_update, handle_list_updates, handle_patch_update,
@@ -194,7 +195,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/observe/events", get(handle_list_observe_events))
         .route("/telemetry/timeseries", get(handle_telemetry_timeseries))
         .route("/telemetry/flag-impacts", get(handle_flag_impacts))
-        .route("/telemetry/events", get(handle_telemetry_events));
+        .route("/telemetry/events", get(handle_telemetry_events))
+        .route("/telemetry/performance", get(handle_get_performance_metrics));
 
     let compressed_routes = Router::new()
         .merge(public_routes)

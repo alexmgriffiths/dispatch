@@ -2,10 +2,25 @@ use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use axum::Json;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 
 use crate::auth::RequireAuth;
 use crate::errors::AppError;
 use crate::routes::AppState;
+
+// ── Shared: lastUpdatedAt helper ────────────────────────────────────────
+
+/// Query the most recent aggregation_runs.completed_at timestamp.
+async fn get_last_updated_at(
+    db: &sqlx::PgPool,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, sqlx::Error> {
+    sqlx::query_scalar::<_, Option<chrono::DateTime<chrono::Utc>>>(
+        "SELECT completed_at FROM aggregation_runs ORDER BY completed_at DESC LIMIT 1",
+    )
+    .fetch_optional(db)
+    .await
+    .map(|opt| opt.flatten())
+}
 
 // ── Telemetry timeseries ─────────────────────────────────────────────────
 
@@ -29,6 +44,13 @@ pub struct TelemetryDailyPoint {
     pub crash_free: f64,
     pub flag_evals: i64,
     pub updates: i64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TelemetryTimeseriesResponse {
+    pub data: Vec<TelemetryDailyPoint>,
+    pub last_updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub async fn handle_telemetry_timeseries(
@@ -70,7 +92,12 @@ pub async fn handle_telemetry_timeseries(
         .await?
     };
 
-    Ok(Json(rows))
+    let last_updated_at = get_last_updated_at(&state.db).await?;
+
+    Ok(Json(TelemetryTimeseriesResponse {
+        data: rows,
+        last_updated_at,
+    }))
 }
 
 // ── Flag impact metrics ──────────────────────────────────────────────────
@@ -88,6 +115,13 @@ pub struct FlagImpactRow {
     pub error_rate: f64,
     pub error_rate_delta: f64,
     pub crash_free: f64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlagImpactsResponse {
+    pub data: Vec<FlagImpactRow>,
+    pub last_updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub async fn handle_flag_impacts(
@@ -132,7 +166,12 @@ pub async fn handle_flag_impacts(
     }
 
     let rows = q.fetch_all(&state.db).await?;
-    Ok(Json(rows))
+    let last_updated_at = get_last_updated_at(&state.db).await?;
+
+    Ok(Json(FlagImpactsResponse {
+        data: rows,
+        last_updated_at,
+    }))
 }
 
 // ── Correlated events ────────────────────────────────────────────────────
@@ -235,4 +274,153 @@ pub async fn handle_telemetry_events(
         .collect();
 
     Ok(Json(events))
+}
+
+// ── Performance metrics ─────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct PerformanceQuery {
+    pub channel: Option<String>,
+    pub platform: Option<String>,
+    pub runtime_version: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformanceResponse {
+    pub metrics: Vec<PerformanceMetricSeries>,
+    pub last_updated_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformanceMetricSeries {
+    pub metric_name: String,
+    pub points: Vec<PerformancePoint>,
+    pub latest: PerformanceLatest,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformancePoint {
+    pub bucket_hour: chrono::DateTime<chrono::Utc>,
+    pub p50: f64,
+    pub p95: f64,
+    pub p99: f64,
+    pub sample_count: i32,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformanceLatest {
+    pub p50: f64,
+    pub p95: f64,
+    pub p99: f64,
+    pub sample_count: i32,
+}
+
+#[derive(sqlx::FromRow)]
+struct PerfAggregateRow {
+    bucket_hour: chrono::DateTime<chrono::Utc>,
+    metric_name: String,
+    sample_count: i32,
+    p50: f64,
+    p95: f64,
+    p99: f64,
+}
+
+pub async fn handle_get_performance_metrics(
+    State(state): State<AppState>,
+    auth: RequireAuth,
+    Query(params): Query<PerformanceQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    let project_id = auth.require_project()?;
+    let since = chrono::Utc::now() - chrono::Duration::hours(24);
+
+    // Build dynamic query with optional filters
+    let mut sql = String::from(
+        "SELECT bucket_hour, metric_name, sample_count, p50, p95, p99 \
+         FROM perf_hourly_aggregates \
+         WHERE project_id = $1 AND bucket_hour >= $2",
+    );
+    let mut arg_idx = 3;
+
+    if params.channel.is_some() {
+        sql.push_str(&format!(" AND channel_name = ${arg_idx}"));
+        arg_idx += 1;
+    }
+    if params.platform.is_some() {
+        sql.push_str(&format!(" AND platform = ${arg_idx}"));
+        arg_idx += 1;
+    }
+    if params.runtime_version.is_some() {
+        sql.push_str(&format!(" AND runtime_version = ${arg_idx}"));
+    }
+
+    sql.push_str(" ORDER BY bucket_hour DESC");
+
+    let mut q = sqlx::query_as::<_, PerfAggregateRow>(&sql)
+        .bind(project_id)
+        .bind(since);
+
+    if let Some(ref channel) = params.channel {
+        q = q.bind(channel);
+    }
+    if let Some(ref platform) = params.platform {
+        q = q.bind(platform);
+    }
+    if let Some(ref runtime_version) = params.runtime_version {
+        q = q.bind(runtime_version);
+    }
+
+    let rows = q.fetch_all(&state.db).await?;
+
+    // Group by metric_name, preserving order (BTreeMap for stable ordering)
+    let mut grouped: BTreeMap<String, Vec<PerformancePoint>> = BTreeMap::new();
+    for row in &rows {
+        grouped
+            .entry(row.metric_name.clone())
+            .or_default()
+            .push(PerformancePoint {
+                bucket_hour: row.bucket_hour,
+                p50: row.p50,
+                p95: row.p95,
+                p99: row.p99,
+                sample_count: row.sample_count,
+            });
+    }
+
+    let metrics: Vec<PerformanceMetricSeries> = grouped
+        .into_iter()
+        .map(|(metric_name, points)| {
+            // points are in DESC order; latest is first
+            let latest = points
+                .first()
+                .map(|p| PerformanceLatest {
+                    p50: p.p50,
+                    p95: p.p95,
+                    p99: p.p99,
+                    sample_count: p.sample_count,
+                })
+                .unwrap_or(PerformanceLatest {
+                    p50: 0.0,
+                    p95: 0.0,
+                    p99: 0.0,
+                    sample_count: 0,
+                });
+
+            PerformanceMetricSeries {
+                metric_name,
+                points,
+                latest,
+            }
+        })
+        .collect();
+
+    let last_updated_at = get_last_updated_at(&state.db).await?;
+
+    Ok(Json(PerformanceResponse {
+        metrics,
+        last_updated_at,
+    }))
 }
