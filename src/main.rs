@@ -1,18 +1,11 @@
 use tracing_subscriber::EnvFilter;
 
-use crate::config::Config;
-use crate::routes::{AppState, create_router};
-use crate::signing::load_private_key;
-
-pub mod auth;
-pub mod config;
-pub mod errors;
-pub mod execution_events;
-pub mod handlers;
-pub mod models;
-pub mod multipart;
-pub mod routes;
-pub mod signing;
+use dispatch_ota::config::Config;
+use dispatch_ota::execution_events::ExecutionEventRegistry;
+use dispatch_ota::handlers;
+use dispatch_ota::jobs;
+use dispatch_ota::routes::{AppState, create_router};
+use dispatch_ota::signing::load_private_key;
 
 #[tokio::main]
 async fn main() {
@@ -83,7 +76,7 @@ async fn main() {
 
     let addr = format!("{}:{}", config.host, config.port);
     let evaluator_db = db.clone();
-    let execution_events = execution_events::ExecutionEventRegistry::new();
+    let execution_events = ExecutionEventRegistry::new();
     let evaluator_events = execution_events.clone();
     let state = AppState {
         db,
@@ -95,7 +88,13 @@ async fn main() {
     let app = create_router(state);
 
     // Spawn background rollout evaluator (checks every 60s)
-    handlers::rollout_evaluator::spawn_evaluator(evaluator_db, evaluator_events);
+    handlers::rollout_evaluator::spawn_evaluator(evaluator_db.clone(), evaluator_events);
+
+    // Spawn background telemetry aggregator (checks every 2 min, 30s stagger)
+    jobs::aggregator::spawn_aggregator(evaluator_db.clone());
+
+    // Spawn background retention cleanup (runs daily, 60s stagger)
+    jobs::retention::spawn_retention(evaluator_db);
 
     tracing::info!("Listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();

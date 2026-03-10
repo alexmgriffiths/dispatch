@@ -17,9 +17,53 @@ pub fn spawn_retention(db: PgPool) {
 }
 
 /// Run a single retention cycle. This is the testable core function.
+///
+/// Deletes:
+/// - health_events_raw older than 30 days
+/// - performance_samples older than 30 days
+/// - aggregation_runs older than 90 days
 pub async fn run_retention_cycle(
-    _db: &PgPool,
+    db: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Stub: will be implemented in GREEN phase
-    todo!("run_retention_cycle not yet implemented")
+    let health_deleted = sqlx::query_scalar::<_, i64>(
+        "WITH deleted AS ( \
+            DELETE FROM health_events_raw \
+            WHERE received_at < NOW() - INTERVAL '30 days' \
+            RETURNING 1 \
+        ) SELECT COUNT(*) FROM deleted",
+    )
+    .fetch_one(db)
+    .await
+    .unwrap_or(0);
+
+    let perf_deleted = sqlx::query_scalar::<_, i64>(
+        "WITH deleted AS ( \
+            DELETE FROM performance_samples \
+            WHERE received_at < NOW() - INTERVAL '30 days' \
+            RETURNING 1 \
+        ) SELECT COUNT(*) FROM deleted",
+    )
+    .fetch_one(db)
+    .await
+    .unwrap_or(0);
+
+    let runs_deleted = sqlx::query_scalar::<_, i64>(
+        "WITH deleted AS ( \
+            DELETE FROM aggregation_runs \
+            WHERE completed_at < NOW() - INTERVAL '90 days' \
+            RETURNING 1 \
+        ) SELECT COUNT(*) FROM deleted",
+    )
+    .fetch_one(db)
+    .await
+    .unwrap_or(0);
+
+    tracing::info!(
+        health_events = health_deleted,
+        performance_samples = perf_deleted,
+        aggregation_runs = runs_deleted,
+        "Retention cycle complete"
+    );
+
+    Ok(())
 }
